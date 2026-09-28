@@ -32,7 +32,7 @@ get subtly wrong:
 | `charIncrement = pixmapLineCount / grooveHeight`, capped at 6, then escalating to `lineIncrement` | `buildPixmap()` |
 | `m_miniMapWidth(40)` | default strip width, 40px |
 | `m_updateTimer.setInterval(300)` | `REBUILD_DELAY_MS` |
-| `m_delayTextPreviewTimer.setInterval(250)` | preview debounce |
+| `m_delayTextPreviewTimer.setInterval(250)`, first show only | preview debounce |
 | `setScaleFactor(0.75)`, half width by fifth height, centred, clamped | `magnifier.js` |
 | pixmap stretched to the strip; fade outside the viewport at alpha 110 | `paint()` |
 | `m_doc->lines() > 7500` skips highlighting | `SIMPLE_MODE_LINE_COUNT` |
@@ -172,15 +172,24 @@ actually changes the rail, and that every control on the options page maps to a
 real setting.
 
 ```sh
-python3 test/smoke.py             # map, preview, click-to-jump, hover
-python3 test/verify_line_split.py # line splitting is exact, against an oracle
-python3 test/test_settings.py     # every setting changes something
-python3 test/probe_sites.py       # live sites: GitHub, Wikipedia, a W3C spec
+python3 test/smoke.py                 # map, preview, click-to-jump, hover
+python3 test/verify_hover_tracking.py # the preview follows a moving pointer
+python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
+python3 test/test_settings.py         # every setting changes something
+python3 test/probe_sites.py           # live sites; edit SITES at the top
 ```
 
 Each test starts its own fixture server and its own headless Firefox on a
-throwaway profile; nothing needs to be running first. `test/probe_sites.py`
-needs internet and takes a list of URLs at the top of the file.
+throwaway profile; nothing needs to be running first. All of them resolve the
+extension through `test/harness.py`, so none of them can drift onto a stale
+copy — one of them had a hardcoded scratch path and had been quietly testing
+two-commit-old code.
+
+`test/verify_hover_tracking.py` is a regression test for a bug that was only
+visible by hand: the preview was debounced on every move, so it only updated
+once the pointer stopped. It fires a burst of moves 16ms apart and checks each
+one lands on its own document offset. Reverting the fix makes three of its
+checks fail, so it is not a test that passes by accident.
 
 Loads the extension into a throwaway Firefox profile as a temporary add-on and
 drives it over a real page with Marionette, asserting that the rail mounts, that

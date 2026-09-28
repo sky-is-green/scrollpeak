@@ -49,6 +49,10 @@
 
     let timer = null;
     let visible = false;
+    // Whether the preview has been created. Mirrors Kate's m_textPreview,
+    // which is allocated on first show and then reused.
+    let created = false;
+    let latestY = 0;
 
     // Kate: hideTextPreview(), and the WindowDeactivate event filter.
     function hide() {
@@ -96,8 +100,14 @@
       // into rows by their own y, each row is sorted left to right, and a line
       // that would collide with one already placed in its row is dropped.
       const left = ctx.map.contentLeftOf();
+      const lines = ctx.map.lines;
+      // Start from a binary search rather than the top of the document: this
+      // runs on every pointermove, and scanning 8,000 lines each time to
+      // reach the middle of the page is most of the hover cost.
       const visible = [];
-      for (const line of ctx.map.lines) {
+      const first = Math.max(0, ctx.map.indexAtY(centre - 4 * lineHeight));
+      for (let i = first; i < lines.length; i++) {
+        const line = lines[i];
         const top = (line.y - centre) * SCALE;
         if (top > height) break; // lines are sorted by y
         if (top + line.height * SCALE < 0) continue;
@@ -166,17 +176,44 @@
       popup.style.top = `${clamp(top, stripRect.top, maxTop)}px`;
     }
 
+    function show(clientY) {
+      const rect = ctx.strip.getBoundingClientRect();
+      const docY = ctx.map.documentOffsetAt(clientY, rect);
+      paint(docY);
+      position(docY);
+      popup.setAttribute("aria-hidden", "false");
+      popup.classList.add("is-open");
+      visible = true;
+      // Kate's m_textPreview: once the widget exists it is reused for the
+      // rest of the session, so this only ever latches on.
+      created = true;
+    }
+
+    /**
+     * Kate's showTextPreviewDelayed().
+     *
+     * The 250ms timer guards the *first* appearance only, so that sweeping
+     * the pointer past the scrollbar does not flash a window. Once the
+     * preview exists, Kate calls showTextPreview() directly on every
+     * mouseMoveEvent -- and note it does not restart the timer either, so the
+     * first hover fires 250ms after it *began*, not after it settled.
+     *
+     * Debouncing every move instead means the timer is reset continuously
+     * while the pointer is moving and only fires once it stops, so the preview
+     * visibly lags and then jumps. That is what this used to do.
+     */
     function schedule(clientY) {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        const rect = ctx.strip.getBoundingClientRect();
-        const docY = ctx.map.documentOffsetAt(clientY, rect);
-        paint(docY);
-        position(docY);
-        popup.setAttribute("aria-hidden", "false");
-        popup.classList.add("is-open");
-        visible = true;
-      }, SHOW_DELAY_MS);
+      latestY = clientY;
+      if (created) {
+        show(clientY);
+        return;
+      }
+      if (timer === null) {
+        timer = setTimeout(() => {
+          timer = null;
+          show(latestY);
+        }, SHOW_DELAY_MS);
+      }
     }
 
     const strip = ctx.strip;

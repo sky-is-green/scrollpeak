@@ -428,16 +428,45 @@
       return ratio * this.docHeight;
     }
 
-    /** Median line-box height, for centring the preview. */
+    /**
+     * Median line-box height, for centring the preview.
+     *
+     * Cached per revision: this sorts a few thousand values, and the preview
+     * repaints on every pointermove now, so recomputing it per frame was the
+     * single most expensive thing in the hover path.
+     */
     medianLineHeight() {
-      if (!this.lines.length) return 0;
+      if (this._medianCacheRev === this.revision) return this._medianCache;
+      if (!this.lines.length) {
+        this._medianCacheRev = this.revision;
+        return (this._medianCache = 0);
+      }
       const step = this.lines.length > 400 ? 3 : 1;
       const heights = [];
       for (let i = 0; i < this.lines.length; i += step) {
         heights.push(this.lines[i].height);
       }
       heights.sort((a, b) => a - b);
-      return heights[heights.length >> 1];
+      this._medianCacheRev = this.revision;
+      this._medianCache = heights[heights.length >> 1];
+      return this._medianCache;
+    }
+
+    /**
+     * Index of the first line at or below `y`. Lines are sorted by y, so this
+     * is a binary search -- the preview needs the same window on every
+     * pointermove and a linear scan from zero is the wrong shape for that.
+     */
+    indexAtY(y) {
+      const lines = this.lines;
+      let lo = 0;
+      let hi = lines.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (lines[mid].y < y) lo = mid + 1;
+        else hi = mid;
+      }
+      return Math.max(0, lo - 1);
     }
   }
 
