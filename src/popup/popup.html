@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ScrollPeek</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel__head">
+        <h1 class="panel__title">ScrollPeek</h1>
+        <p class="panel__sub" id="site-label">this site</p>
+      </header>
+
+      <label class="row">
+        <input type="checkbox" id="site-toggle" />
+        <span class="row__label">Show the minimap on this site</span>
+      </label>
+
+      <label class="row">
+        <input type="checkbox" id="magnifier-toggle" />
+        <span class="row__label">Magnifier on hover</span>
+      </label>
+
+      <label class="row">
+        <input type="checkbox" id="markers-toggle" />
+        <span class="row__label">Heading markers on the track</span>
+      </label>
+
+      <footer class="panel__foot">
+        <a href="../options/options.html" target="_blank" rel="noopener">All settings</a>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

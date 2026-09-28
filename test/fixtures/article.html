@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrollPeek test article</title>
+<style>
+  body { font: 17px/1.65 Georgia, serif; margin: 0 auto; max-width: 44rem; padding: 2rem 1rem 6rem; color: #1c1c1e; background: #fdfdfc; }
+  h1 { font-size: 2rem; color: #10233f; }
+  h2 { font-size: 1.4rem; color: #1d4e89; margin-top: 2.5rem; }
+  h3 { font-size: 1.1rem; color: #2d6a4f; }
+  p { margin: 0 0 1.1rem; }
+  a { color: #a8341f; }
+  blockquote { border-left: 3px solid #ccc; margin: 0 0 1.1rem; padding-left: 1rem; color: #555; }
+  pre { background: #f2f0ec; padding: .8rem; font: 13px/1.5 ui-monospace, monospace; color: #333; }
+  code { font: 14px ui-monospace, monospace; color: #7a2e8a; }
+  li { margin-bottom: .4rem; }
+  .meta { color: #777; font-size: 14px; }
+</style>
+</head>
+<body>
+<article>
+<h1>On the readability of long documents</h1>
+<p class="meta">A test article with headings, links, quotations, code and lists, so the
+minimap has something with real structure and colour to render.</p>
+
+<h2>The problem with scrolling</h2>
+<p>Reading a long document by scrolling is a search problem dressed up as a
+navigation problem. You know roughly what you want, you move down in blind
+slices, you stop, you read a little, and you move again. The cost of every
+iteration is paid whether or not the slice you stopped at contained anything.</p>
+<p>A scrollbar that showed the shape of the whole document would change the
+shape of that search. Instead of choosing a slice and checking it, you could
+see where you are in the whole and aim. This is the trick text editors have
+used for thirty years, and it works because the cost of looking is far lower
+than the cost of guessing.</p>
+<p>See <a href="#a">the original note</a> or <a href="#b">the follow-up discussion</a>
+for more on the ergonomics.</p>
+
+<h2>What the map should show</h2>
+<p>Enough to recognise structure, not so much that it becomes a document in
+its own right. A schematic that lists every element is useless, because it has
+the same information density as the thing it is summarising.</p>
+<blockquote><p>The map should answer one question quickly: is what I am
+looking for above me, below me, or nowhere near here?</p></blockquote>
+<p>Dense text and sparse text should look different. A heading should be
+distinguishable from body copy at a glance, without reading it.</p>
+
+<h3>Colour as structure</h3>
+<p>Colour is doing most of the work here. A page already assigns different
+colours to headings, links, quotations and code, and reusing those is cheaper
+and more faithful than inventing a palette. A rendered map that is monochrome
+throws away the one signal the page was already giving us for free.</p>
+
+<h2>Implementation notes</h2>
+<p>Drawing one mark per character, rather than per element, keeps the map
+honest about density. A paragraph with many short lines and a paragraph with
+two long ones should not look alike.</p>
+<pre>for each run of text:
+    y = floor(run.top * scale)
+    if y == last_row: skip
+    for each pixel of width:
+        ch = run.text[pixel * step]
+        if not ch.isspace(): mark(pixel, y)
+</pre>
+<p>The <code>step</code> is what keeps a very long line from being drawn off
+the edge of the strip, and it is the only part of this that has no direct
+analogue in a text editor, where lines are usually a known width.</p>
+
+<h2>Interaction</h2>
+<ul>
+<li>Hovering the map should preview the text under the cursor.</li>
+<li>Clicking should move the viewport there, not merely scroll by a page.</li>
+<li>Dragging should continue smoothly, as a native scrollbar does.</li>
+</ul>
+<p>None of this is difficult. It is mostly the discipline of doing the cheap
+thing on every pointer move, because pointer moves are the one interaction
+that happens hundreds of times a minute.</p>
+
+<h2>Limits</h2>
+<p>Pages that virtualise their content will not map correctly, because the
+document has no real height. Pages inside <code>content-visibility: auto</code>
+are fine, since the text is in the DOM whether or not it has been painted —
+which is precisely the case that defeats screenshot-based approaches.</p>
+<p>The honest summary is that a map is a navigation aid, not a substitute for
+reading. It tells you where things are. You still have to go and look at
+them, which is rather the point.</p>
+</article>
+</body>
+</html>

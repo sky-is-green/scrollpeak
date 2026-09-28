@@ -1,0 +1,101 @@
+/* ScrollPeek — styles for our own UI.
+ *
+ * vugluscr injects its own structural CSS and exposes every colour as a
+ * --vugluscr_* custom property, so theming the rail is a matter of setting
+ * those properties on the class vugluscr puts on <html> (vugluscr_active for
+ * page mode, vugluscr_embedded for an inner scroller). We never write rules
+ * against vugluscr's internals, which is what keeps the vendored copy
+ * replaceable.
+ */
+
+:root {
+  --sp-bg: #ffffff;
+  --sp-fg: #1a1a1a;
+  --sp-border: rgba(0, 0, 0, 0.18);
+  --sp-shadow: rgba(0, 0, 0, 0.22);
+  --sp-accent: #3b6ea5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sp-bg: #1c1b22;
+    --sp-fg: #fbfbfe;
+    --sp-border: rgba(255, 255, 255, 0.2);
+    --sp-shadow: rgba(0, 0, 0, 0.6);
+    --sp-accent: #7ab;
+  }
+}
+
+/* Theme the rail. One accent drives the whole widget and every derived tint
+ * is a color-mix of it, so changing --sp-accent restyles the extension. */
+html.vugluscr_active,
+html.vugluscr_embedded {
+  --vugluscr_color: var(--sp-accent);
+  --vugluscr_track_background: color-mix(in srgb, var(--sp-accent) 11%, transparent);
+  --vugluscr_thumb_background: color-mix(in srgb, var(--sp-accent) 30%, transparent);
+  --vugluscr_thumb_hover_background: color-mix(in srgb, var(--sp-accent) 50%, transparent);
+  --vugluscr_minimap_background: color-mix(in srgb, var(--sp-accent) 11%, transparent);
+  --vugluscr_minimap_thumb_background: color-mix(in srgb, var(--sp-accent) 50%, transparent);
+  --vugluscr_minimap_block: color-mix(in srgb, var(--sp-accent) 23%, transparent);
+  --vugluscr_minimap_block_group: color-mix(in srgb, var(--sp-accent) 17%, transparent);
+  --vugluscr_minimap_block_unknown: color-mix(in srgb, var(--sp-accent) 25%, transparent);
+  --vugluscr_minimap_block_image: color-mix(in srgb, var(--sp-accent) 45%, transparent);
+}
+
+/* ---------------------------------------------------------------- the map
+ *
+ * Our canvas sits in the same strip as vugluscr's <svg>, which we switched
+ * off. Hiding the SVG rather than removing it keeps the strip's own geometry —
+ * and therefore vugluscr's thumb and hit area — exactly where they were. */
+
+.vugluscr .minimap > svg {
+  /* opacity, NOT display:none. vugluscr attaches the strip's pointerdown
+   * handler to this <svg>, and a display:none element is not hit-tested, so
+   * hiding it that way silently kills click-to-jump and drag. opacity:0 keeps
+   * the element laid out and hit-testable while drawing nothing.
+   *
+   * This rule is unlayered, so it outranks vugluscr's own @layer
+   * vugluscr.structure regardless of specificity. */
+  opacity: 0;
+}
+
+.scrollpeak-map {
+  display: block;
+  position: absolute;
+  inset: 0;
+  /* The map is decoration. The strip's own hit target is vugluscr's <svg>,
+   * which sits above us in the stacking order. */
+  pointer-events: none;
+  /* The map is a one-pixel-per-character raster; letting the browser smooth
+   * it would destroy the whole point. Kate draws to a QPixmap at
+   * devicePixelRatio and does not interpolate either. */
+  image-rendering: pixelated;
+}
+
+/* ------------------------------------------------------------- the preview */
+
+.scrollpeak-magnifier {
+  position: fixed;
+  z-index: 2147483647;
+  overflow: hidden;
+  border: 1px solid var(--sp-border);
+  border-radius: 3px;
+  background: var(--sp-bg);
+  box-shadow: 0 2px 12px var(--sp-shadow);
+
+  /* Kept in the tree but transparent, so the first hover does not pay a
+   * layout. Kate creates the preview widget lazily and reuses it; this is the
+   * browser equivalent of that reuse. */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease, visibility 120ms ease;
+}
+
+.scrollpeak-magnifier.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.scrollpeak-magnifier__canvas {
+  display: block;
+}

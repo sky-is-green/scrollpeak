@@ -1,0 +1,17 @@
+vugluscr
+Copyright (c) Jurijs Kovzels
+
+This product includes software developed by Microsoft Corporation.
+
+Portions of this software are adapted from Visual Studio Code
+(https://github.com/microsoft/vscode) — the scroll engine (`scrollable.ts`),
+the write-caching DOM wrapper (`fastDomNode.ts`), the canvas marker track
+(`decorationsOverviewRuler`), and the minimap.
+
+Those portions are:
+
+  Copyright (c) Microsoft Corporation. All rights reserved.
+  Licensed under the MIT License.
+
+The MIT License text applying to both the original and the adapted portions is
+reproduced in full in the LICENSE file alongside this notice.

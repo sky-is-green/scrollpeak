@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ScrollPeek Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="page">
+      <h1>ScrollPeek</h1>
+      <p class="lede">
+        A scrollbar minimap for Firefox, ported from
+        <a href="https://kate-editor.org">Kate</a>.
+      </p>
+
+      <section>
+        <h2>Behaviour</h2>
+
+        <label class="field">
+          <input type="checkbox" id="enabled" />
+          <span>
+            ScrollPeek is enabled
+            <small>Turn off everywhere without uninstalling.</small>
+          </span>
+        </label>
+
+        <label class="field">
+          <input type="checkbox" id="optInPerSite" />
+          <span>
+            Respect the site list below
+            <small>
+              On: the rail is hidden on the sites you list, and shown
+              everywhere else. Off: the list is ignored and the rail replaces
+              the scrollbar on every page.
+            </small>
+          </span>
+        </label>
+
+        <label class="field">
+          <input type="checkbox" id="hideWhenPageFits" />
+          <span>
+            Hide the rail when the page is barely scrollable
+            <small>
+              A page under 1.5 screens gets no minimap — there is nothing to
+              map.
+            </small>
+          </span>
+        </label>
+      </section>
+
+      <section>
+        <h2>Magnifier</h2>
+
+        <label class="field">
+          <input type="checkbox" id="showMagnifier" />
+          <span>Show a magnified preview when hovering the minimap</span>
+        </label>
+
+        <label class="field field--range">
+          <span>Zoom</span>
+          <input type="range" id="magnifierZoom" min="1.5" max="8" step="0.5" />
+          <output id="magnifierZoom-out"></output>
+        </label>
+
+        <label class="field field--range">
+          <span>Popup width</span>
+          <input type="range" id="magnifierWidth" min="200" max="600" step="10" />
+          <output id="magnifierWidth-out"></output>
+        </label>
+
+        <label class="field field--range">
+          <span>Popup height</span>
+          <input type="range" id="magnifierHeight" min="120" max="600" step="10" />
+          <output id="magnifierHeight-out"></output>
+        </label>
+      </section>
+
+      <section>
+        <h2>Minimap</h2>
+
+        <label class="field field--range">
+          <span>Width</span>
+          <input type="range" id="minimapWidth" min="24" max="200" step="4" />
+          <output id="minimapWidth-out"></output>
+        </label>
+
+        <label class="field">
+          <input type="checkbox" id="showMarkers" />
+          <span>Show heading markers on the track</span>
+        </label>
+      </section>
+
+      <section>
+        <h2>Sites</h2>
+        <p class="hint">
+          ScrollPeek is hidden on these sites. Parent domains cover their
+          subdomains.
+        </p>
+        <ul class="sites" id="site-list"></ul>
+        <p class="sites__empty" id="sites-empty">
+          No sites excluded. ScrollPeek is showing everywhere.
+        </p>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

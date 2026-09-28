@@ -1,0 +1,143 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --muted: #5b5b66;
+  --border: rgba(0, 0, 0, 0.14);
+  --accent: #3b6ea5;
+  --surface: rgba(0, 0, 0, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #fbfbfe;
+    --muted: #b1b1bd;
+    --border: rgba(255, 255, 255, 0.16);
+    --accent: #7ab;
+    --surface: rgba(255, 255, 255, 0.06);
+  }
+}
+
+body {
+  margin: 0;
+  font: message-box;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: Canvas;
+}
+
+.page {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.lede {
+  margin: 0.25rem 0 2rem;
+  color: var(--muted);
+}
+
+a {
+  color: var(--accent);
+}
+
+section {
+  margin-bottom: 2.25rem;
+}
+
+h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.field:hover {
+  background: var(--surface);
+}
+
+.field small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin-top: 0.2rem;
+}
+
+.field--range {
+  align-items: center;
+  cursor: default;
+}
+
+.field--range > span {
+  flex: 0 0 8rem;
+}
+
+input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+output {
+  flex: 0 0 4rem;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  color: var(--muted);
+  margin-top: 0;
+}
+
+.sites {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sites li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sites button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+
+.sites button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sites__empty {
+  color: var(--muted);
+}
