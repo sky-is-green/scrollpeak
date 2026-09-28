@@ -23,11 +23,9 @@ async function init() {
 
   const siteToggle = $("site-toggle");
   const magToggle = $("magnifier-toggle");
-  const markersToggle = $("markers-toggle");
 
   siteToggle.checked = !isListed(settings.disabledSites, host);
   magToggle.checked = settings.showMagnifier;
-  markersToggle.checked = settings.showMarkers;
 
   siteToggle.addEventListener("change", async () => {
     const next = new Set(settings.disabledSites);

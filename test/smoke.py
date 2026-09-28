@@ -24,71 +24,10 @@ import sys
 import tempfile
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-EXT = os.path.join(HERE, "..", "src")
-FIXTURES = os.path.join(HERE, "fixtures")
-PORT = 2851
-FIXTURE = "http://127.0.0.1:8765/article.html"
-
-
-class Marionette:
-    """Minimal Marionette client.
-
-    The protocol frames every message as ASCII "<byte-length>:<json>" — the
-    handshake included. Decoding the opening packet as bare JSON silently
-    parses the length prefix as a number, which is a genuinely confusing way
-    to lose an afternoon.
-    """
-
-    def __init__(self, sock):
-        self.sock, self.buf, self.n = sock, b"", 0
-        self.hello = self._frame()
-
-    def _raw(self):
-        chunk = self.sock.recv(65536)
-        if not chunk:
-            raise RuntimeError("marionette closed the connection")
-        return chunk
-
-    def _frame(self):
-        while b":" not in self.buf:
-            self.buf += self._raw()
-        head, rest = self.buf.split(b":", 1)
-        length = int(head)
-        while len(rest) < length:
-            rest += self._raw()
-        self.buf = rest[length:]
-        return json.loads(rest[:length])
-
-    def cmd(self, name, params=None):
-        self.n += 1
-        payload = json.dumps([0, self.n, name, params or {}]).encode()
-        self.sock.sendall(str(len(payload)).encode() + b":" + payload)
-        while True:
-            msg = self._frame()
-            if isinstance(msg, list) and msg and msg[0] == 1:
-                if len(msg) > 2 and msg[2]:
-                    raise RuntimeError(f"{name} failed: {msg[2]}")
-                return msg[3] if len(msg) > 3 else None
-
-
-def start_firefox(profile):
-    prefs = f"""
-user_pref("marionette.port", {PORT});
-user_pref("marionette.enabled", true);
-user_pref("extensions.autoDisableScopes", 0);
-user_pref("browser.shell.checkDefaultBrowser", false);
-user_pref("datareporting.policy.dataSubmissionEnabled", false);
-user_pref("toolkit.telemetry.enabled", false);
-"""
-    with open(os.path.join(profile, "user.js"), "w") as f:
-        f.write(prefs)
-    return subprocess.Popen(
-        ["firefox", "--profile", profile, "--headless", "--marionette",
-         "--no-remote", "about:blank"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-        env=dict(os.environ, MOZ_HEADLESS="1"),
-    )
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harness import (  # noqa: E402
+    ARTICLE, SRC, fixture_server, launch_firefox, stop_firefox,
+)
 
 
 INSPECT = r"""
@@ -207,30 +146,12 @@ setTimeout(() => done({before, after: window.scrollY,
 
 
 def main():
-    if not os.path.isdir(FIXTURES):
-        print("fixtures missing", file=sys.stderr)
-        return 2
-
-    profile = tempfile.mkdtemp(prefix="scrollpeak-profile-")
-    proc = start_firefox(profile)
     failures = []
-    try:
-        sock = None
-        for _ in range(60):
-            try:
-                sock = socket.create_connection(("127.0.0.1", PORT), timeout=3)
-                break
-            except OSError:
-                time.sleep(1)
-        if sock is None:
-            print("could not reach marionette", file=sys.stderr)
-            return 2
-
-        m = Marionette(sock)
-        m.cmd("WebDriver:NewSession", {"capabilities": {}})
-        m.cmd("Addon:Install", {"path": EXT, "temporary": True})
-        time.sleep(3)
-        m.cmd("WebDriver:Navigate", {"url": FIXTURE})
+    with fixture_server() as server:
+      proc, m = launch_firefox(SRC)
+      try:
+        time.sleep(2)
+        m.cmd("WebDriver:Navigate", {"url": server.base + ARTICLE})
         time.sleep(4)
 
         res = m.cmd("WebDriver:ExecuteAsyncScript",
@@ -267,13 +188,8 @@ def main():
               f"(max {click['maxScroll']})")
         if not moved:
             failures.append("click_to_jump")
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        err = proc.stderr.read().decode("utf-8", "replace")
+      finally:
+        err = stop_firefox(proc)
         noisy = [l for l in err.splitlines()
                  if "ScrollPeek" in l or "JavaScript error" in l]
         # setPointerCapture on a synthetic pointer id is a test artefact, not

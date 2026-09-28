@@ -10,95 +10,111 @@
       <h1>ScrollPeek</h1>
       <p class="lede">
         A scrollbar minimap for Firefox, ported from
-        <a href="https://kate-editor.org">Kate</a>.
+        <a href="https://kate-editor.org">Kate</a>. The settings below are the
+        ones Kate offers for its own scrollbar, and nothing else.
       </p>
 
       <section>
-        <h2>Behaviour</h2>
+        <h2>Scrollbar</h2>
 
         <label class="field">
           <input type="checkbox" id="enabled" />
           <span>
             ScrollPeek is enabled
-            <small>Turn off everywhere without uninstalling.</small>
+            <small>Turn it off everywhere without uninstalling.</small>
           </span>
         </label>
 
-        <label class="field">
-          <input type="checkbox" id="optInPerSite" />
-          <span>
-            Respect the site list below
-            <small>
-              On: the rail is hidden on the sites you list, and shown
-              everywhere else. Off: the list is ignored and the rail replaces
-              the scrollbar on every page.
-            </small>
-          </span>
-        </label>
+        <fieldset class="field field--radio">
+          <legend>Show the scrollbar</legend>
+          <label
+            ><input type="radio" name="scrollbarMode" value="always" />
+            <span
+              >Always
+              <small>Even on a page that fits on one screen.</small></span
+            ></label
+          >
+          <label
+            ><input type="radio" name="scrollbarMode" value="whenNeeded" />
+            <span
+              >When needed
+              <small>Only when the page actually scrolls. Kate calls this
+              “show when needed”.</small></span
+            ></label
+          >
+          <label
+            ><input type="radio" name="scrollbarMode" value="never" />
+            <span>Never <small>No rail at all.</small></span></label
+          >
+        </fieldset>
 
-        <label class="field">
-          <input type="checkbox" id="hideWhenPageFits" />
-          <span>
-            Hide the rail when the page is barely scrollable
-            <small>
-              A page under 1.5 screens gets no minimap — there is nothing to
-              map.
-            </small>
-          </span>
+        <label class="field field--range">
+          <span>Minimap width</span>
+          <input type="range" id="minimapWidth" min="20" max="200" step="2" />
+          <output id="minimapWidth-out"></output>
         </label>
+        <p class="hint">
+          Kate's default is 60px, range 0–999. It is capped at 200 here because
+          beyond that it eats the page.
+        </p>
       </section>
 
       <section>
-        <h2>Magnifier</h2>
+        <h2>Preview</h2>
 
         <label class="field">
           <input type="checkbox" id="showMagnifier" />
-          <span>Show a magnified preview when hovering the minimap</span>
-        </label>
-
-        <label class="field field--range">
-          <span>Zoom</span>
-          <input type="range" id="magnifierZoom" min="1.5" max="8" step="0.5" />
-          <output id="magnifierZoom-out"></output>
-        </label>
-
-        <label class="field field--range">
-          <span>Popup width</span>
-          <input type="range" id="magnifierWidth" min="200" max="600" step="10" />
-          <output id="magnifierWidth-out"></output>
-        </label>
-
-        <label class="field field--range">
-          <span>Popup height</span>
-          <input type="range" id="magnifierHeight" min="120" max="600" step="10" />
-          <output id="magnifierHeight-out"></output>
+          <span>
+            Show a preview of the text when hovering the minimap
+            <small
+              >Kate calls this the scrollbar preview, and it defaults to
+              on.</small
+            >
+          </span>
         </label>
       </section>
 
       <section>
-        <h2>Minimap</h2>
-
-        <label class="field field--range">
-          <span>Width</span>
-          <input type="range" id="minimapWidth" min="24" max="200" step="4" />
-          <output id="minimapWidth-out"></output>
-        </label>
+        <h2>Marks</h2>
 
         <label class="field">
           <input type="checkbox" id="showMarkers" />
-          <span>Show heading markers on the track</span>
+          <span>
+            Mark heading positions on the track
+            <small>
+              Kate marks bookmarks and breakpoints here, and defaults this
+              off. On a web page it can only be a guess about what matters, so
+              it stays off until you ask for it.
+            </small>
+          </span>
         </label>
       </section>
 
       <section>
         <h2>Sites</h2>
         <p class="hint">
-          ScrollPeek is hidden on these sites. Parent domains cover their
-          subdomains.
+          ScrollPeek is hidden on these sites. A parent domain covers its
+          subdomains, so <code>example.com</code> also covers
+          <code>docs.example.com</code>.
         </p>
         <ul class="sites" id="site-list"></ul>
         <p class="sites__empty" id="sites-empty">
           No sites excluded. ScrollPeek is showing everywhere.
+        </p>
+      </section>
+
+      <section>
+        <h2>Not ported</h2>
+        <p class="hint">
+          Kate also has a “show whole document in the mini-map” option, but
+          Kate's own settings dialog hides it with the comment <em
+            >temporary until the feature is done</em
+          >. It is not offered here for the same reason.
+        </p>
+        <p class="hint">
+          The preview's size and scale are fixed at Kate's values — half the
+          window wide by a fifth tall, text at 0.75 — because they are not
+          adjustable in Kate either.
         </p>
       </section>
     </main>

@@ -30,7 +30,10 @@
       rail = new globalThis.Vugluscr.Scrollbar({
         contentElement: content,
         showMinimap: true,
-        autoHide: settings.hideWhenPageFits,
+        // Kate's ShowWhenNeeded. "always" means the rail stays even on a page
+        // that fits, which is what m_autoHide = false gives us here; vugluscr
+        // also hides the rail in fullscreen either way, which is right.
+        autoHide: settings.scrollbarMode !== "always",
         minimap: {
           // Kate's default: m_miniMapWidth(40)
           minimapWidth: settings.minimapWidth,

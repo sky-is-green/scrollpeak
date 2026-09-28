@@ -1,13 +1,16 @@
 // ScrollPeek — options page.
-
-const CHECKBOXES = ["enabled", "optInPerSite", "hideWhenPageFits", "showMagnifier", "showMarkers"];
-const RANGES = ["magnifierZoom", "magnifierWidth", "magnifierHeight", "minimapWidth"];
+//
+// The setting set is deliberately Kate's and only Kate's; see the note in
+// background.js for the mapping and options.html for what was left out.
 
 const $ = (id) => document.getElementById(id);
 
+const CHECKBOXES = ["enabled", "showMagnifier", "showMarkers"];
+const RANGES = ["minimapWidth"];
+const MODES = ["always", "whenNeeded", "never"];
+
 function formatRange(id, value) {
-  if (id === "magnifierZoom") return `${value}×`;
-  return `${value}px`;
+  return id === "minimapWidth" ? `${value}px` : String(value);
 }
 
 async function load() {
@@ -32,12 +35,24 @@ async function load() {
     el.addEventListener("change", () => persist({ [id]: Number(el.value) }));
   }
 
+  for (const mode of MODES) {
+    const el = document.querySelector(`input[name="scrollbarMode"][value="${mode}"]`);
+    el.checked = settings.scrollbarMode === mode;
+    el.addEventListener("change", () => {
+      if (el.checked) persist({ scrollbarMode: mode });
+    });
+  }
+
   renderSites(settings.disabledSites || []);
 }
 
+/**
+ * Save, and let the background tell open tabs to re-mount.
+ *
+ * The background does the broadcast, so this page never has to know that
+ * content scripts exist.
+ */
 async function persist(patch) {
-  // The background script saves and then tells every open tab, so this page
-  // does not need to know that content scripts exist.
   await browser.runtime.sendMessage({ type: "scrollpeak:setSetting", patch });
 }
 
@@ -58,10 +73,9 @@ function renderSites(sites) {
         const current = await browser.runtime.sendMessage({
           type: "scrollpeak:getSettings",
         });
-        await persist({
-          disabledSites: (current.disabledSites || []).filter((s) => s !== site),
-        });
-        renderSites((current.disabledSites || []).filter((s) => s !== site));
+        const next = (current.disabledSites || []).filter((s) => s !== site);
+        await persist({ disabledSites: next });
+        renderSites(next);
       });
 
       li.append(name, remove);

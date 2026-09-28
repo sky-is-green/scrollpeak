@@ -51,10 +51,10 @@
       return;
     }
 
-    // A page with no scrollbar has no minimap. vugluscr's autoHide also hides
-    // the rail here, but checking first avoids constructing the whole widget —
-    // ResizeObserver included — for a page that will not use it.
-    if (settings.hideWhenPageFits && !qualifies()) {
+    // Kate's ShowWhenNeeded: only build the widget when there is something to
+    // scroll. Checked here rather than left to vugluscr's autoHide, which
+    // would construct the whole thing -- ResizeObserver and all -- first.
+    if (settings.scrollbarMode === "whenNeeded" && !pageScrolls()) {
       teardown?.();
       teardown = null;
       return;
@@ -83,14 +83,8 @@
   });
 })();
 
-/**
- * Is this page long enough to be worth a minimap?
- *
- * Read from the scrolling element rather than document.body: pages that
- * scroll on <html> (the common case) report a body height of one viewport,
- * which would make every such page look undeserving.
- */
-function qualifies() {
+/** Read from the scrolling element; see the note in background.js. */
+function pageScrolls() {
   const scroller = document.scrollingElement || document.documentElement;
-  return scroller.scrollHeight > window.innerHeight * 1.5;
+  return scroller.scrollHeight > window.innerHeight;
 }

@@ -23,10 +23,10 @@ import sys
 import tempfile
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-EXT = os.path.join(HERE, "..", "src")
-URL = "http://127.0.0.1:8765/article.html"
-PORT = 2881
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harness import (  # noqa: E402
+    ARTICLE, SRC, fixture_server, launch_firefox, stop_firefox,
+)
 
 ORACLE = r"""
 const done = arguments[arguments.length - 1];
@@ -97,67 +97,11 @@ done(out);
 """
 
 
-class Marionette:
-    def __init__(self, sock):
-        self.sock, self.buf, self.n = sock, b"", 0
-        self.hello = self._frame()
-
-    def _raw(self):
-        c = self.sock.recv(65536)
-        if not c:
-            raise RuntimeError("marionette closed")
-        return c
-
-    def _frame(self):
-        while b":" not in self.buf:
-            self.buf += self._raw()
-        head, rest = self.buf.split(b":", 1)
-        n = int(head)
-        while len(rest) < n:
-            rest += self._raw()
-        self.buf = rest[n:]
-        return json.loads(rest[:n])
-
-    def cmd(self, name, params=None):
-        self.n += 1
-        p = json.dumps([0, self.n, name, params or {}]).encode()
-        self.sock.sendall(str(len(p)).encode() + b":" + p)
-        while True:
-            m = self._frame()
-            if isinstance(m, list) and m and m[0] == 1:
-                if len(m) > 2 and m[2]:
-                    raise RuntimeError(f"{name}: {m[2]}")
-                return m[3] if len(m) > 3 else None
-
-
 def main():
-    profile = tempfile.mkdtemp(prefix="scrollpeak-split-")
-    with open(os.path.join(profile, "user.js"), "w") as f:
-        f.write(
-            f'user_pref("marionette.port", {PORT});\n'
-            'user_pref("marionette.enabled", true);\n'
-            'user_pref("extensions.autoDisableScopes", 0);\n'
-            'user_pref("browser.shell.checkDefaultBrowser", false);\n'
-            'user_pref("datareporting.policy.dataSubmissionEnabled", false);\n'
-        )
-    proc = subprocess.Popen(
-        ["firefox", "--profile", profile, "--headless", "--marionette",
-         "--no-remote", "about:blank"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        env=dict(os.environ, MOZ_HEADLESS="1"))
-    try:
-        sock = None
-        for _ in range(60):
-            try:
-                sock = socket.create_connection(("127.0.0.1", PORT), timeout=3)
-                break
-            except OSError:
-                time.sleep(1)
-        m = Marionette(sock)
-        m.cmd("WebDriver:NewSession", {"capabilities": {}})
-        m.cmd("Addon:Install", {"path": EXT, "temporary": True})
-        time.sleep(2)
-        m.cmd("WebDriver:Navigate", {"url": URL})
+    with fixture_server() as server:
+      proc, m = launch_firefox(SRC)
+      try:
+        m.cmd("WebDriver:Navigate", {"url": server.base + ARTICLE})
         time.sleep(4)
         r = m.cmd("WebDriver:ExecuteAsyncScript",
                   {"script": ORACLE, "args": [], "scriptTimeout": 60000})
@@ -169,12 +113,8 @@ def main():
         for e in d.get("examples", [])[:3]:
             print("  MISMATCH " + json.dumps(e)[:300])
         return 0 if d["wrong"] == 0 else 1
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except Exception:
-            proc.kill()
+      finally:
+        stop_firefox(proc)
 
 
 if __name__ == "__main__":

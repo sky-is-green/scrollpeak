@@ -133,16 +133,54 @@ To install it permanently, submit to [addons.mozilla.org](https://addons.mozilla
 as an **unlisted** add-on. That is signed automatically and is not human
 reviewed, which is the right route once the UI is settled.
 
-## Testing
+## Settings
+
+Kate's own settings for this feature, and only those. From
+`KateViewConfig` / the Appearance → Borders tab:
+
+| Setting | Kate default | Here |
+|---|---|---|
+| Scrollbar minimap width | 60 | `minimapWidth` |
+| Scrollbar preview (the hover preview) | on | `showMagnifier` |
+| Scrollbar marks | off | `showMarkers` |
+| Show scrollbars: always / when needed / never | always | `scrollbarMode` |
+
+Two of my earlier guesses were wrong and are corrected: the default width is
+**60**, not the 40 in `KateScrollBar`'s constructor — `kateview.cpp` applies the
+config value at init and overrides it — and marks default **off**, which I had
+on.
+
+Deliberately **not** ported:
+
+- **"Show whole document in the mini-map"** (`ShowScrollBarMiniMapAll`).
+  Kate's own settings dialog hides its checkbox with the comment *"temporary
+  until the feature is done"*, so it is not a setting anyone can depend on.
+- **Preview size and scale.** Kate hardcodes half the window wide by a fifth
+  tall, at 0.75 scale, and offers no control. Neither do we.
+- **Map tint or opacity.** The map takes the page's own colours by design; a
+  tint setting would fight that.
+
+The web-specific addition is the site exclusion list, which has no analogue in
+an editor.
+
+### Testing the settings
+
+`test/test_settings.py` installs the extension with different defaults and
+checks what a real page ends up with — that `never` releases the padding the
+rail reserved, that `whenNeeded` hides on a page that fits, that the width
+actually changes the rail, and that every control on the options page maps to a
+real setting.
 
 ```sh
-python3 -m http.server 8765 --directory test/fixtures &
-python3 test/smoke.py
+python3 test/smoke.py             # map, preview, click-to-jump, hover
+python3 test/verify_line_split.py # line splitting is exact, against an oracle
+python3 test/test_settings.py     # every setting changes something
+python3 test/probe_sites.py       # live sites: GitHub, Wikipedia, a W3C spec
 ```
 
-There is also `test/probe_sites.py`, which runs the extension over live sites —
-GitHub, Wikipedia, a 20,000-node W3C spec — and reports what it managed to map.
-Point `SITES` at whatever you are working on.
+Each test starts its own fixture server and its own headless Firefox on a
+throwaway profile; nothing needs to be running first. `test/probe_sites.py`
+needs internet and takes a list of URLs at the top of the file.
 
 Loads the extension into a throwaway Firefox profile as a temporary add-on and
 drives it over a real page with Marionette, asserting that the rail mounts, that
