@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launch Firefox with ScrollPeek installed, for testing.
+Launch Firefox with ScrollPeak installed, for testing.
 
 Why this exists
 ---------------
@@ -55,7 +55,7 @@ user_pref("toolkit.telemetry.enabled", false);
 user_pref("app.update.enabled", false);
 user_pref("extensions.update.enabled", false);
 
-// ScrollPeek replaces the scrollbar, so give the page room and keep the
+// ScrollPeak replaces the scrollbar, so give the page room and keep the
 // native bar from being re-enabled by anything.
 user_pref("layout.css.scrollbar-width.content.enabled", true);
 """
@@ -148,7 +148,7 @@ def main():
         m.cmd("WebDriver:Navigate", {"url": url})
 
     print()
-    print("ScrollPeek is loaded and Firefox is open. Go and use it.")
+    print("ScrollPeak is loaded and Firefox is open. Go and use it.")
     print()
     print("  Try it on:  a long article, an MDN reference page, a Wikipedia")
     print("              article, a docs site. The rail replaces the")
@@ -159,7 +159,7 @@ def main():
     print("  Drag the strip   -> scroll continuously")
     print("  Arrow keys       -> work as normal")
     print()
-    print("  Toggle per site: click the ScrollPeek toolbar icon.")
+    print("  Toggle per site: click the ScrollPeak toolbar icon.")
     print("  Settings:        right-click the icon -> Options, or the")
     print("                   'All settings' link in the popup.")
     print()

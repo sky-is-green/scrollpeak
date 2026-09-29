@@ -1,4 +1,4 @@
-// ScrollPeek — background service worker (MV3).
+// ScrollPeak — background service worker (MV3).
 //
 // Owns preferences and nothing else. Content scripts own the DOM; the worker
 // owns settings, so a background restart costs the user nothing visible.
@@ -187,7 +187,7 @@ async function broadcastChange() {
 }
 
 /**
- * Show whether ScrollPeek is on for the tab you are looking at.
+ * Show whether ScrollPeak is on for the tab you are looking at.
  *
  * Without this the only way to tell is to look for the rail, and "nothing
  * appeared" is indistinguishable from "broken".
@@ -212,8 +212,8 @@ async function refreshAction() {
   await browser.action.setTitle({
     tabId: tab.id,
     title: on
-      ? `ScrollPeek — showing on ${host || "this page"}`
-      : `ScrollPeek — off on ${host || "this page"}`,
+      ? `ScrollPeak — showing on ${host || "this page"}`
+      : `ScrollPeak — off on ${host || "this page"}`,
   });
 }
 

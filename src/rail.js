@@ -1,4 +1,4 @@
-// ScrollPeek — mounts the vugluscr rail and installs our own minimap.
+// ScrollPeak — mounts the vugluscr rail and installs our own minimap.
 //
 // Division of labour, decided against Kate's reference implementation:
 //
@@ -42,7 +42,7 @@
         },
       });
     } catch (err) {
-      console.warn("[ScrollPeek] could not mount rail:", err);
+      console.warn("[ScrollPeak] could not mount rail:", err);
       return null;
     }
 
@@ -56,11 +56,11 @@
     try {
       minimap.setSourceElement(null);
     } catch (err) {
-      console.warn("[ScrollPeek] could not disable vugluscr map:", err);
+      console.warn("[ScrollPeak] could not disable vugluscr map:", err);
     }
 
     const strip = minimap.domNode.domNode;
-    const map = new globalThis.ScrollPeekTextMap.TextMap({
+    const map = new globalThis.ScrollPeakTextMap.TextMap({
       width: settings.minimapWidth,
       height: window.innerHeight,
     });
@@ -133,12 +133,12 @@
         // JavaScript debugging" ticked) this is the first place to look if a
         // big page feels heavy.
         console.debug(
-          `[ScrollPeek] ${map.lines.length} lines, ` +
+          `[ScrollPeak] ${map.lines.length} lines, ` +
           `charIncrement=${map.charIncrement} lineIncrement=${map.lineIncrement}, ` +
           `pixmap ${map.pixmapLineWidth}x${map.pixmapLineCount}, ` +
           `${(performance.now() - t0).toFixed(1)}ms`,
         );
-      }, globalThis.ScrollPeekTextMap.REBUILD_DELAY_MS);
+      }, globalThis.ScrollPeakTextMap.REBUILD_DELAY_MS);
     }
 
     /** Kate's cheap per-frame path: no DOM work at all. */
@@ -373,5 +373,5 @@
     return ctx;
   }
 
-  globalThis.ScrollPeekRail = { mount };
+  globalThis.ScrollPeakRail = { mount };
 })();

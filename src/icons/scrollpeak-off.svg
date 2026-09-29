@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
   <!-- Inactive variant: the same shape, drained of colour, so the toolbar
-       shows at a glance whether ScrollPeek is on for the current site. -->
+       shows at a glance whether ScrollPeak is on for the current site. -->
   <defs>
     <clipPath id="strip-off">
       <rect x="58" y="10" width="26" height="76" rx="3" />

@@ -1,4 +1,4 @@
-// ScrollPeek — content script entry point.
+// ScrollPeak — content script entry point.
 //
 // Loaded last (see the js array order in manifest.json), after the vendored
 // vugluscr bundle and after textmap.js / rail.js / magnifier.js have defined
@@ -20,11 +20,11 @@
   if (url.startsWith("about:") || url.startsWith("moz-extension:")) return;
 
   if (!globalThis.Vugluscr?.Scrollbar) {
-    console.warn("[ScrollPeek] vugluscr did not load; minimap unavailable");
+    console.warn("[ScrollPeak] vugluscr did not load; minimap unavailable");
     return;
   }
-  if (!globalThis.ScrollPeekTextMap) {
-    console.warn("[ScrollPeek] textmap.js did not load; minimap unavailable");
+  if (!globalThis.ScrollPeakTextMap) {
+    console.warn("[ScrollPeak] textmap.js did not load; minimap unavailable");
     return;
   }
 
@@ -49,7 +49,7 @@
     } catch (err) {
       // Background worker reloading, or the extension was just updated.
       // Leave the page exactly as we found it.
-      console.debug("[ScrollPeek] could not reach background:", err);
+      console.debug("[ScrollPeak] could not reach background:", err);
       return;
     }
 
@@ -73,11 +73,11 @@
     // Replace rather than stack: a settings change re-enters this function.
     teardown?.();
 
-    const ctx = globalThis.ScrollPeekRail.mount(settings, theme);
+    const ctx = globalThis.ScrollPeakRail.mount(settings, theme);
     if (!ctx) return;
     rail = ctx;
 
-    const magnifier = globalThis.ScrollPeekMagnifier.mount(ctx, settings);
+    const magnifier = globalThis.ScrollPeakMagnifier.mount(ctx, settings);
     teardown = () => {
       magnifier?.teardown();
       ctx.teardown();

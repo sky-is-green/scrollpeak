@@ -1,4 +1,4 @@
-// ScrollPeek — the minimap renderer.
+// ScrollPeak — the minimap renderer.
 //
 // A port of Kate's scrollbar minimap. The reference is KateScrollBar in
 // ktexteditor, src/view/kateviewhelpers.cpp: updatePixmap() builds the map,
@@ -19,19 +19,22 @@
 // Step 1 is the expensive one and Kate caches it, rebuilding on a 300ms timer;
 // steps 2-3 are cheap and run every frame. That split is preserved here.
 //
-// Where the web forced a change, it is noted at the point of change. There is
-// exactly one: Kate can ask a syntax highlighter for each character's colour,
+// Where the web forced a change, it is noted at the point of change. There are
+// two. One: Kate can ask a syntax highlighter for each character's colour,
 // whereas a page only exposes colour per element, so a "line" here is a line
 // box of a single text node rather than a line of arbitrary mixed colour. A
 // paragraph with a link in it therefore becomes two runs, which is more
-// faithful to the page, not less.
+// faithful to the page, not less. Two, beyond the port: a short page does not
+// have enough lines to make a raster, so the map switches to semantic blocks
+// when it is zoomed in past the point where characters read as text. See
+// #wantsBlocks() and #collectBlocks(). On a long document nothing changes.
 
 (function () {
   // All the colour maths lives in colour.js, shared with the options page so
   // the swatch there shows the colour the strip will actually be.
   const {
     parseRgb, resolveColor, ensureContrast, withAlpha, resolveStripBackground,
-  } = globalThis.ScrollPeekColour;
+  } = globalThis.ScrollPeakColour;
 
   /**
    * Memo of element -> is it out of the document's flow.
@@ -54,6 +57,20 @@
 
   // Kate: simpleMode -- m_doc->lines() > 7500 skips highlighting work
   const SIMPLE_MODE_LINE_COUNT = 7500;
+
+  // Beyond the port: when the map is stretched so far that a text line would
+  // occupy more than this many pixels of the groove, the raster stops reading
+  // as text and turns into blobs. Below that much zoom the map draws semantic
+  // blocks instead. See collectBlocks().
+  const BLOCK_MIN_LINE_PX = 4;
+
+  // What becomes a block: the boxes a person navigates by. Links and images
+  // are drawn as themselves; everything else is a text area.
+  const BLOCK_SELECTOR = [
+    "p", "li", "dt", "dd", "h1", "h2", "h3", "h4", "h5", "h6",
+    "blockquote", "pre", "figcaption", "caption", "td", "th",
+    "summary", "button", "label", "a[href]", "img",
+  ].join(", ");
 
   const SKIP_TAGS = new Set([
     "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE",
@@ -97,6 +114,14 @@
       this.lineIncrement = 1;
       this.background = "#ffffff";
       this.revision = 0;
+      /**
+       * Semantic blocks, collected instead of the text raster when the map is
+       * too zoomed for the raster to read. See collectBlocks().
+       */
+      this.blocks = [];
+      this.blockMode = false;
+      this.blockLeft = 0;
+      this.blockRight = 0;
       // vugluscr's viewport thumb, read for the fade. Deriving the band from
       // the thumb itself rather than recomputing its geometry means the two
       // can never disagree.
@@ -235,8 +260,92 @@
       this.background = this.pageBackground();
       this.resolveColours();
 
+      // Which renderer this revision gets is decided by the zoom, not by the
+      // page: a handful of line boxes stretched over a tall groove is not
+      // text any more, and blocks read better there. See #wantsBlocks().
+      this.blockMode = this.#wantsBlocks();
+      if (this.blockMode) {
+        this.#collectBlocks(root, scrollX, scrollY, maxY);
+        // A page with nothing block-shaped (rare) reads better as text.
+        this.blockMode = this.blocks.length > 0;
+      } else {
+        this.blocks = [];
+      }
+
       this.revision++;
       return lines;
+    }
+
+    /** Is the map stretched past the point where the raster reads as text? */
+    #wantsBlocks() {
+      // One text line per BLOCK_MIN_LINE_PX of groove, or fatter. The height
+      // guard keeps a tiny map from flipping modes on rounding.
+      return this.height >= 40 && this.lines.length > 0 &&
+        this.lines.length * BLOCK_MIN_LINE_PX < this.height;
+    }
+
+    /**
+     * The elements worth drawing as blocks, in document coordinates.
+     *
+     * This is the one pass that reads the page as elements rather than text,
+     * and it only runs when the map is zoomed in: on a long document the
+     * raster looks better and this sweep is skipped entirely, so the cost of
+     * a per-element getBoundingClientRect never lands on the pages that do
+     * not need it.
+     *
+     * Links use their line fragments rather than one bounding box, so a link
+     * that wraps is two blue bars instead of a rectangle covering the text
+     * between them. Images are atomic. Everything else is a text area.
+     */
+    #collectBlocks(root, scrollX, scrollY, maxY) {
+      const blocks = [];
+      for (const el of root.querySelectorAll(BLOCK_SELECTOR)) {
+        if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) {
+          continue;
+        }
+        const cs = getComputedStyle(el);
+        if (
+          cs.display === "none" ||
+          cs.visibility === "hidden" || cs.visibility === "collapse" ||
+          this.#isStuck(el)
+        ) {
+          continue;
+        }
+
+        const kind = el.tagName === "IMG" ? "image"
+          : el.tagName === "A" ? "link" : "text";
+        const rects = kind === "link"
+          ? Array.from(el.getClientRects())
+          : [el.getBoundingClientRect()];
+
+        for (const r of rects) {
+          if (r.width < 1 || r.height < 1) continue;
+          const y = r.top + scrollY;
+          if (y + r.height < 0 || y > maxY) continue;
+          blocks.push({
+            x: r.left + scrollX,
+            y,
+            w: r.width,
+            h: r.height,
+            kind,
+            colour: kind === "link" ? cs.color : null,
+          });
+        }
+      }
+
+      // Text areas first, then links, then image outlines on top of both.
+      const order = { text: 0, link: 1, image: 2 };
+      blocks.sort((a, b) => order[a.kind] - order[b.kind]);
+
+      this.blocks = blocks;
+      let left = Infinity;
+      let right = -Infinity;
+      for (const b of blocks) {
+        if (b.x < left) left = b.x;
+        if (b.x + b.w > right) right = b.x + b.w;
+      }
+      this.blockLeft = blocks.length ? left : 0;
+      this.blockRight = blocks.length ? right : 1;
     }
 
     /**
@@ -637,6 +746,31 @@
         this.canvas.dataset.palette = palette;
       }
 
+      // Which renderer drew this map, and for blocks, what it had to work
+      // with. Published for the block test and the site probe.
+      let modeKey = "text";
+      let counts = null;
+      if (this.blockMode) {
+        counts = { text: 0, link: 0, image: 0 };
+        for (const b of this.blocks) counts[b.kind]++;
+        modeKey = `blocks:${JSON.stringify(counts)}:` +
+          `${Math.round(this.blockLeft)}:${Math.round(this.blockRight)}`;
+      }
+      if (modeKey !== this._modeKey) {
+        this._modeKey = modeKey;
+        this.canvas.dataset.mode = this.blockMode ? "blocks" : "text";
+        if (counts) {
+          this.canvas.dataset.blocks = JSON.stringify(counts);
+          this.canvas.dataset.blockSpan = JSON.stringify({
+            left: Math.round(this.blockLeft),
+            right: Math.round(this.blockRight),
+          });
+        } else {
+          delete this.canvas.dataset.blocks;
+          delete this.canvas.dataset.blockSpan;
+        }
+      }
+
       const rectKey = `${Math.round(docTop)}:${Math.round(docHeight)}`;
       if (rectKey !== this._rectKey) {
         this._rectKey = rectKey;
@@ -662,14 +796,19 @@
       ctx.fillStyle = this.mapBackground;
       ctx.fillRect(0, 0, this.width, grooveHeight);
 
-      // Stretch the pixmap over the whole groove.
-      const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
-      if (contentW > 0) {
-        ctx.drawImage(
-          this.pixmap,
-          S_PIXEL_MARGIN, 0, contentW, this.pixmapLineCount,
-          DOC_X_MARGIN, docTop, this.width - DOC_X_MARGIN, docHeight,
-        );
+      // Stretch the pixmap over the whole groove, or, when the map is too
+      // zoomed for the raster to read as text, draw the semantic blocks.
+      if (this.blockMode) {
+        this.#paintBlocks(docTop, docHeight);
+      } else {
+        const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
+        if (contentW > 0) {
+          ctx.drawImage(
+            this.pixmap,
+            S_PIXEL_MARGIN, 0, contentW, this.pixmapLineCount,
+            DOC_X_MARGIN, docTop, this.width - DOC_X_MARGIN, docHeight,
+          );
+        }
       }
 
       // Fade what is not currently visible. Kate: backgroundColor at alpha 110.
@@ -688,6 +827,53 @@
       // Kate also draws a delimiter at the bottom of the map, which only has
       // somewhere to go because his map can be shorter than the groove. Ours
       // always reaches the bottom, so there is nothing to delimit.
+    }
+
+    /**
+     * The block renderer: text areas as contrast fills, links in their own
+     * colour, images as hollow outlines.
+     *
+     * Like the raster, this maps document coordinates onto the drawn rect, so
+     * the viewport band and the preview's document offsets still line up with
+     * what is drawn. The horizontal span is the blocks' own extent rather
+     * than the viewport's, so a page with a sidebar or a narrow column still
+     * uses the whole strip instead of a sliver of it.
+     */
+    #paintBlocks(docTop, docHeight) {
+      const ctx = this.ctx;
+      const span = Math.max(1, this.blockRight - this.blockLeft);
+      const stripW = Math.max(1, this.width - 2 * DOC_X_MARGIN);
+      const ink = this.palette.ink;
+      const bgRgb = this._mapBackgroundRgb;
+
+      for (const b of this.blocks) {
+        const x = DOC_X_MARGIN + ((b.x - this.blockLeft) / span) * stripW;
+        const w = Math.max(1, (b.w / span) * stripW);
+        const y = docTop + (b.y / this.docHeight) * docHeight;
+        const h = Math.max(1, (b.h / this.docHeight) * docHeight);
+
+        if (b.kind === "link") {
+          // The page's own link colour, pushed to contrast with the strip the
+          // same way the text raster pushes its marks: a link stays
+          // link-coloured and readable on any strip.
+          const rgb = ensureContrast(
+            parseRgb(b.colour) || [59, 110, 165], bgRgb, this.markContrast);
+          ctx.fillStyle = `rgb(${rgb.join(",")})`;
+          ctx.fillRect(x, y, w, h);
+        } else if (b.kind === "image") {
+          // Hollow, so it reads as a picture rather than as another block of
+          // text. The hole is painted first because an image inside a
+          // paragraph is covered by the paragraph's fill.
+          ctx.fillStyle = this.mapBackground;
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = ink;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, h - 1));
+        } else {
+          ctx.fillStyle = ink;
+          ctx.fillRect(x, y, w, h);
+        }
+      }
     }
 
     /** The viewport band, taken from the thumb's real position. */
@@ -817,5 +1003,5 @@
     return slice.replace(/\s+/g, " ").replace(/ +$/, "");
   }
 
-  globalThis.ScrollPeekTextMap = { TextMap, REBUILD_DELAY_MS, S_PIXEL_MARGIN };
+  globalThis.ScrollPeakTextMap = { TextMap, REBUILD_DELAY_MS, S_PIXEL_MARGIN };
 })();

@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "ScrollPeek probe theme",
+  "name": "ScrollPeak probe theme",
   "version": "1.0",
   "description": "Not for use. A Firefox theme with known colours, so the test can prove the minimap's default follows an installed theme.",
   "theme": {

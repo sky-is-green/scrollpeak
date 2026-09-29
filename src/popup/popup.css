@@ -1,4 +1,4 @@
-/* ScrollPeek — popup styling.
+/* ScrollPeak — popup styling.
  *
  * MDN, "Popups": when setting a popup's width in CSS, set it on <body>, not
  * on :root. Firefox computes the popup's preferred width from the body in

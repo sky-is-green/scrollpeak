@@ -6,7 +6,7 @@ the form. Edit freely — this is copy, not code.
 
 ## Name
 
-ScrollPeek
+ScrollPeak
 
 ## Summary
 
@@ -20,14 +20,14 @@ section, click to jump.
 
 **The whole page beside you, always.**
 
-ScrollPeek replaces the scrollbar with a miniature map of the page: its text,
+ScrollPeak replaces the scrollbar with a miniature map of the page: its text,
 its headings, its links, its code, drawn in the page's own colours. It is a
 port of the scrollbar minimap from [Kate](https://kate-editor.org), the KDE
 text editor, where finding a function in a 5,000-line file is a glance rather
 than a hunt.
 
 The web has no equivalent. On a long article or a documentation page you
-scroll, stop, read, and scroll again — and usually overshoot. ScrollPeek shows
+scroll, stop, read, and scroll again — and usually overshoot. ScrollPeak shows
 you where the rest of the page is before you go there.
 
 - **Hover** the strip to preview the text under the cursor.
@@ -35,6 +35,8 @@ you where the rest of the page is before you go there.
 - **Click** to jump there. **Drag** to scroll continuously.
 - **Peek** parks the rail off-screen until you approach it.
 - **Minimap only** drops the track and keeps the map.
+- On short pages the map turns into a block diagram — links in their own
+  colour, pictures as outlines — so it stays clean instead of blurring.
 - The map's width, its colours and a per-site exclusion list are all settings.
 - The default strip colour follows your Firefox theme.
 
@@ -42,7 +44,7 @@ Everything is drawn locally, from the page you are already looking at.
 
 ### Privacy
 
-No network access, no analytics, no telemetry. ScrollPeek reads the page it is
+No network access, no analytics, no telemetry. ScrollPeak reads the page it is
 running on to draw the map, and stores nothing beyond your own preferences.
 
 Requires Firefox 146 or later. It has not been tested on Firefox for Android.

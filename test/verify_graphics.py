@@ -237,7 +237,7 @@ def main():
             ids = r.get("value", r)
             check("clones carry no id attributes", not ids, str(ids))
 
-            print("\nthe map itself is still text-only, as Kate has it")
+            print("\nthe map never takes the page's graphics colours")
             r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
                 const map = document.querySelector(".scrollpeak-map");
                 const d = map.getContext("2d").getImageData(0, 0, map.width, map.height).data;
@@ -250,9 +250,11 @@ def main():
                 return {red, green, w: map.width};
             """, "args": []})
             d = r.get("value", r)
-            # The page's text is dark grey; the icons are the only saturated
-            # colour, so neither should have leaked into the text raster.
-            check("icons do not leak into the minimap",
+            # This is a short page, so the map is the block renderer and the
+            # images are hollow ink outlines. The fixture's saturated colours
+            # -- the red and green squares -- must not reach the map either
+            # way: the graphics are content, not the palette.
+            check("image colours do not leak into the map",
                   d["red"] == 0 and d["green"] == 0,
                   f"red={d['red']} green={d['green']} in a {d['w']}px map")
         finally:

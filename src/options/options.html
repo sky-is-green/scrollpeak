@@ -2,12 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>ScrollPeek Settings</title>
+    <title>ScrollPeak Settings</title>
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
     <main class="page">
-      <h1>ScrollPeek</h1>
+      <h1>ScrollPeak</h1>
       <p class="lede">
         A scrollbar minimap for Firefox, ported from
         <a href="https://kate-editor.org">Kate</a>. The settings below are the
@@ -20,7 +20,7 @@
         <label class="field">
           <input type="checkbox" id="enabled" />
           <span>
-            ScrollPeek is enabled
+            ScrollPeak is enabled
             <small>Turn it off everywhere without uninstalling.</small>
           </span>
         </label>
@@ -93,7 +93,7 @@
       <section>
         <h2>Sites</h2>
         <p class="hint">
-          ScrollPeek is hidden on these sites. A parent domain covers its
+          ScrollPeak is hidden on these sites. A parent domain covers its
           subdomains, so <code>example.com</code> also covers
           <code>docs.example.com</code>.
         </p>
@@ -111,7 +111,7 @@
         <p class="addsite__error" id="site-error" hidden></p>
         <ul class="sites" id="site-list"></ul>
         <p class="sites__empty" id="sites-empty">
-          No sites excluded. ScrollPeek is showing everywhere.
+          No sites excluded. ScrollPeak is showing everywhere.
         </p>
       </section>
 
@@ -208,21 +208,6 @@
           <button type="button" class="linkbtn" id="copy-settings">Copy settings as JSON</button>
         </nav>
         <p class="hint" id="copy-note" hidden>Copied to the clipboard.</p>
-      </section>
-
-      <section>
-        <h2>Not ported</h2>
-        <p class="hint">
-          Kate also has a “show whole document in the mini-map” option, but
-          Kate's own settings dialog hides it with the comment <em
-            >temporary until the feature is done</em
-          >. It is not offered here for the same reason.
-        </p>
-        <p class="hint">
-          The preview's size and scale are fixed at Kate's values — half the
-          window wide by a fifth tall, text at 0.75 — because they are not
-          adjustable in Kate either.
-        </p>
       </section>
     </main>
     <!-- The same colour maths the content script runs, so the swatch above is

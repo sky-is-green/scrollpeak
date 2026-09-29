@@ -1,4 +1,4 @@
-// ScrollPeek — the hover preview.
+// ScrollPeak — the hover preview.
 //
 // A port of Kate's KateTextPreview (ktexteditor, src/view/katetextpreview.cpp).
 // Being precise about what Kate's "magnifier" is matters, because it is not a
@@ -74,7 +74,7 @@
   // A hairline between the frame and the page's own edge. Small on purpose:
   // this is a window onto the page, and each pixel here is a pixel of the page
   // that is not shown. The page supplies its own margins.
-  const BUFFER = 2;
+  const BUFFER = 1;
 
   function mount(ctx, settings) {
     if (!settings.showMagnifier) return null;
@@ -426,5 +426,5 @@
     return Math.min(max, Math.max(min, v));
   }
 
-  globalThis.ScrollPeekMagnifier = { mount };
+  globalThis.ScrollPeakMagnifier = { mount };
 })();

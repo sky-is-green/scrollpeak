@@ -1,4 +1,4 @@
-// ScrollPeek — colour maths, shared.
+// ScrollPeak — colour maths, shared.
 //
 // Loaded by the content script (see the js array in manifest.json) and by the
 // options page and popup (see a <script> tag in each). It is a plain global
@@ -160,7 +160,7 @@
     };
   }
 
-  globalThis.ScrollPeekColour = {
+  globalThis.ScrollPeakColour = {
     luminance,
     contrast,
     parseRgb,

@@ -5,7 +5,7 @@ Capture the listing images for addons.mozilla.org.
 AMO wants 1-5 screenshots, 1280x800, PNG or JPEG. These are taken from a
 headless Firefox with the extension loaded as a temporary add-on, over the
 article fixture, so they show the real thing rather than a mock-up: the rail
-with the page's text in it, and the hover preview open on a section.
+with the map, and the hover preview open on a section.
 
     python3 scripts/amo-screenshots.py
 

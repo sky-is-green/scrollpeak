@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Probe ScrollPeek against real-world sites.
+Probe ScrollPeak against real-world sites.
 
 The fixture page is a polite static article. Real sites are not: SPAs, fixed
 headers, lazily-mounted content, custom scrollbars, huge DOMs. This runs the
@@ -38,6 +38,7 @@ out.active = document.documentElement.classList.contains("vugluscr_active");
 
 const map = q(".scrollpeak-map");
 out.map = !!map;
+out.mode = map ? map.dataset.mode : null;
 if (map) {
   let painted = 0; const colors = new Set();
   try {
@@ -89,7 +90,7 @@ def main():
             print(
                 f"  [{mark}] {label:24} {d.get('ratio')}x  "
                 f"map={d.get('mapWidth')}px painted={d.get('painted')} "
-                f"colours={d.get('colors')} dom={d.get('domNodes')} "
+                f"colours={d.get('colors')} mode={d.get('mode')} dom={d.get('domNodes')} "
                 f"padR={d.get('bodyPadRight')} hOver={d.get('hOverflow')} "
                 f"errs={d.get('errors')} ({time.time() - t0:.0f}s)",
                 flush=True,
@@ -97,7 +98,7 @@ def main():
     finally:
         err = stop_firefox(proc)
         rel = [l for l in err.splitlines()
-               if "ScrollPeek" in l or "JavaScript error" in l]
+               if "ScrollPeak" in l or "JavaScript error" in l]
         rel = [l for l in rel if "Invalid pointer id" not in l]
         if rel:
             print("\nextension/page errors:")

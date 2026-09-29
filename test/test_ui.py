@@ -257,10 +257,10 @@ def main():
             check("site add-form present", d["hasAddForm"])
             check("links present", d["hasLinks"] >= 4, f"n={d['hasLinks']}")
 
-            # The point of the settings page: a real ScrollPeek on it, so a
+            # The point of the settings page: a real ScrollPeak on it, so a
             # change can be seen landing without leaving. Checked by moving a
             # control and looking for the bar to move with it.
-            print("\nlive ScrollPeek on the settings page")
+            print("\nlive ScrollPeak on the settings page")
             r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
                 const rail = document.querySelector(".vugluscr .minimap");
                 return {mounted: !!rail,

@@ -1,4 +1,4 @@
-// ScrollPeek — options page.
+// ScrollPeak — options page.
 //
 // The setting set is deliberately Kate's and only Kate's; see the note in
 // background.js for the mapping and options.html for what was left out.
@@ -55,7 +55,7 @@ async function load() {
 }
 
 /**
- * A working ScrollPeek on this very page.
+ * A working ScrollPeak on this very page.
  *
  * Every control above moves it, so "did that setting land?" is answered by
  * looking to the right instead of by opening another tab and guessing. Same
@@ -66,14 +66,14 @@ async function load() {
  * code the content script uses, and that is the path worth exercising.
  */
 function mountPreview(settings) {
-  if (!globalThis.Vugluscr?.Scrollbar || !globalThis.ScrollPeekRail) return;
+  if (!globalThis.Vugluscr?.Scrollbar || !globalThis.ScrollPeakRail) return;
 
   teardownPreview?.();
 
-  const ctx = globalThis.ScrollPeekRail.mount(settings, null);
+  const ctx = globalThis.ScrollPeakRail.mount(settings, null);
   if (!ctx) return;
 
-  const magnifier = globalThis.ScrollPeekMagnifier.mount(ctx, settings);
+  const magnifier = globalThis.ScrollPeakMagnifier.mount(ctx, settings);
   teardownPreview = () => {
     magnifier?.teardown();
     ctx.teardown();
@@ -100,7 +100,7 @@ let teardownPreview = null;
  * appearance and the hint says so.
  */
 function wireColour(settings) {
-  const C = globalThis.ScrollPeekColour;
+  const C = globalThis.ScrollPeakColour;
 
   const paint = async () => {
     const current = await browser.runtime.sendMessage({

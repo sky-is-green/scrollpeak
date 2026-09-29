@@ -97,17 +97,18 @@ if (map) {
   out.cssSource = rootCs.getPropertyValue("--sp-palette-source").trim();
   const W = map.width, H = map.height;
   const d = map.getContext("2d").getImageData(0, 0, W, H).data;
-  // The most common opaque colour is the strip background; the marks are
-  // whatever differs from it.
-  const counts = new Map();
+  // The strip colour is the resolved value itself, not the most common
+  // painted colour: when the map is in block mode the fills cover more of it
+  // than the background does, and the fade blends them, so "most common" is
+  // no longer a proxy for the background.
+  const rgbOf = (css) => (css.match(/\d+/g) || []).slice(0, 3).join(",");
+  const bgKey = rgbOf(out.cssStrip);
+  out.stripBg = bgKey;
+  let bgCount = 0;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i+3] < 250) continue;
-    const k = d[i] + "," + d[i+1] + "," + d[i+2];
-    counts.set(k, (counts.get(k) || 0) + 1);
+    if (d[i] + "," + d[i+1] + "," + d[i+2] === bgKey) bgCount++;
   }
-  let bgKey = null, bgCount = 0;
-  for (const [k, n] of counts) if (n > bgCount) { bgCount = n; bgKey = k; }
-  out.stripBg = bgKey;
   out.stripBgShare = bgCount / (W * H);
 
   // Darkest and lightest mark, by luminance, among pixels that are not the

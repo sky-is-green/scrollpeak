@@ -1,4 +1,4 @@
-// ScrollPeek — toolbar popup.
+// ScrollPeak — toolbar popup.
 //
 // The popup is loaded fresh every time it opens and unloaded when it closes,
 // so there is no state to keep. MDN also notes it cannot scroll vertically:
@@ -26,7 +26,7 @@ async function init() {
   $("site-toggle").checked = onThisSite;
   $("site-toggle").disabled = !host;
   $("state-pill").hidden = onThisSite;
-  $("state-pill").title = host ? `ScrollPeek is off on ${host}` : "";
+  $("state-pill").title = host ? `ScrollPeak is off on ${host}` : "";
 
   // Kate's three-way scrollbar choice, as a segmented control.
   for (const mode of MODES) {

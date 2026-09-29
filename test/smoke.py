@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Headless smoke test for ScrollPeek.
+Headless smoke test for ScrollPeak.
 
 Loads the extension into a throwaway Firefox profile as a temporary add-on,
 drives it over a real page with Marionette, and asserts the things that are
@@ -78,7 +78,7 @@ if (map) {
   }
 }
 ok("map_painted", painted > 2000, "px=" + painted);
-ok("map_uses_page_colours", colors.size >= 3, "colours=" + colors.size);
+ok("map_has_colour", colors.size >= 3, "colours=" + colors.size);
 ok("map_spans_document", rows.size > 40, "rows=" + rows.size);
 ok("map_spans_width", buckets.size >= bucketCount - 1,
    buckets.size + "/" + bucketCount);
@@ -193,7 +193,7 @@ def main():
       finally:
         err = stop_firefox(proc)
         noisy = [l for l in err.splitlines()
-                 if "ScrollPeek" in l or "JavaScript error" in l]
+                 if "ScrollPeak" in l or "JavaScript error" in l]
         # setPointerCapture on a synthetic pointer id is a test artefact, not
         # a product fault: a real pointer has a real id.
         noisy = [l for l in noisy if "Invalid pointer id" not in l]

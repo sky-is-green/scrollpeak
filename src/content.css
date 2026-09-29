@@ -1,4 +1,4 @@
-/* ScrollPeek — styles for our own UI.
+/* ScrollPeak — styles for our own UI.
  *
  * vugluscr injects its own structural CSS and exposes every colour as a
  * --vugluscr_* custom property, so theming the rail is a matter of setting
@@ -103,7 +103,7 @@ html.vugluscr_embedded {
    * every pixel of frame here is a pixel of the page pushed out of a window
    * that is only half the screen wide to begin with. */
   box-sizing: border-box;
-  padding: 2px;
+  padding: 1px;
   background: var(--sp-bg);
   box-shadow: 0 2px 12px var(--sp-shadow);
 

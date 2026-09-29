@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ScrollPeek",
+  "name": "ScrollPeak",
   "version": "0.1.0",
   "description": "A scrollbar minimap. Hover the scrollbar to see the whole page, magnify a section, click to jump.",
   "homepage_url": "https://github.com/sky-is-green/scrollpeak",
@@ -41,7 +41,7 @@
     }
   ],
   "action": {
-    "default_title": "ScrollPeek",
+    "default_title": "ScrollPeak",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/scrollpeak-16.png",

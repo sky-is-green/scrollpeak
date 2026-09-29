@@ -1,4 +1,4 @@
-# ScrollPeek
+# ScrollPeak
 
 **A scrollbar minimap for Firefox.**
 
@@ -16,7 +16,7 @@ and a preview when you hover. On a 5,000-line file that is the difference
 between finding a function and hunting for it.
 
 The web has no equivalent. On a long article or a documentation page you
-scroll, stop, read, and scroll again — and usually overshoot. ScrollPeek keeps
+scroll, stop, read, and scroll again — and usually overshoot. ScrollPeak keeps
 the whole page beside you at all times and lets you aim before you leap.
 
 ## How it works
@@ -42,8 +42,9 @@ Kate caches the pixmap and rebuilds it on a timer; scrolling only repaints.
 That split is preserved, because building the map is the expensive half and
 stretching it is not.
 
-The one deliberate deviation is the struck-through line in the table. Kate
-sizes the map's *scrollable* range as `min(grooveHeight, pixmapHeight * 2) - 2`,
+The one deliberate deviation in Kate's arithmetic is the struck-through line
+in the table. Kate sizes the map's *scrollable* range as
+`min(grooveHeight, pixmapHeight * 2) - 2`,
 so a pixmap shorter than half the groove is drawn doubled and the document
 scrolls through that part only. On the web the clamp always bites — on the
 fixture article the map was being squeezed into 124px of a 682px groove, 18% of
@@ -51,12 +52,13 @@ the strip — and it leaves the map, the thumb and the preview in three differen
 coordinate systems. The map spans the groove instead; the arithmetic and the
 measurement are at the point of use in `src/textmap.js` (`paint()`).
 
-**The map is a raster of the page's text, not a schematic of its elements.**
-Kate draws one pixel per character, coloured by that character's own
-attributes, and downsamples by skipping every Nth line and every Nth character
-as the document outgrows the strip. A page gives us the colouring for free —
-Kate pays for syntax highlighting explicitly, whereas a page's computed styles
-already separate headings, links, body copy, quotations and code.
+**On a long document the map is a raster of the page's text, not a schematic
+of its elements.** Kate draws one pixel per character, coloured by that
+character's own attributes, and downsamples by skipping every Nth line and
+every Nth character as the document outgrows the strip. A page gives us the
+colouring for free — Kate pays for syntax highlighting explicitly, whereas a
+page's computed styles already separate headings, links, body copy,
+quotations and code.
 
 `src/textmap.js` does this on a canvas.
 
@@ -74,6 +76,17 @@ browser drew, and `renderedText()` puts the line back into that shape before
 characters are sliced onto it. Whitespace that is genuinely significant
 (`<pre>`, `white-space: pre*`) is detected per element from its own computed
 value rather than guessed.
+
+**A short page stops being a raster.** Kate's raster assumes a document of
+thousands of lines. A page with a few dozen has each line stretched over
+10px of groove or more, and the characters stop being characters — the map
+becomes bands of blobs. Below one line per 4px of groove — short articles,
+site stubs, the settings page — the map switches to semantic blocks instead:
+text areas filled white or black, whichever contrasts with the strip; links in
+the page's own link colour, pushed to contrast the same way the raster's marks
+are; and images as hollow 1px outlines. It is an addition to the port rather
+than a change to it: on a long document, where Kate's raster reads as text,
+nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
@@ -142,7 +155,7 @@ supplies its own margins.
 
 ## The settings page
 
-The options page mounts a real ScrollPeek on itself, from the same files a page
+The options page mounts a real ScrollPeak on itself, from the same files a page
 gets, so a change can be seen landing without leaving. That is deliberate: a
 preview built from anything else could disagree with what a page actually gets.
 Checked by moving the width control and watching the bar go 60px to 120px.
@@ -200,7 +213,7 @@ extensions — `xpinstall.signatures.required=false` is silently ignored outside
 Nightly, Developer Edition and ESR. What Release does accept is a **temporary
 add-on**, which needs no Mozilla account and no signing.
 
-ScrollPeek needs **Firefox 146 or later**; the manifest enforces it, and the
+ScrollPeak needs **Firefox 146 or later**; the manifest enforces it, and the
 reason is in [Status](#status).
 
 The quick way:
@@ -211,7 +224,7 @@ python3 scripts/dev-launch.py https://en.wikipedia.org/wiki/Firefox
 ```
 
 That starts a second Firefox on a throwaway profile in `test-profile/`, installs
-ScrollPeek into it, and leaves the window open. Your existing Firefox, your
+ScrollPeak into it, and leaves the window open. Your existing Firefox, your
 bookmarks and your other extensions are untouched — it really is a separate
 instance. Close that window when you are done; if you restart Firefox you need
 to run the script again, because temporary add-ons do not survive a restart.
@@ -250,7 +263,7 @@ MDN also settles three details that are easy to get wrong:
   would need a new add-on id. Left at the default.
 
 The toolbar button also shows state: the icon is dimmed and the tooltip says
-"off" when ScrollPeek is disabled for the site you are on. Without it, the only
+"off" when ScrollPeak is disabled for the site you are on. Without it, the only
 way to tell is to look for the rail, and "nothing appeared" is indistinguishable
 from "broken".
 
@@ -356,6 +369,7 @@ python3 test/verify_hover_tracking.py # the preview follows a moving pointer
 python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
 python3 test/verify_graphics.py       # images, SVG, canvas and backgrounds
 python3 test/verify_preview_lines.py  # the preview reproduces the page's lines
+python3 test/verify_blocks.py         # text raster when long, blocks when zoomed
 python3 test/test_appearance.py       # colour, contrast, minimap-only, peek
 python3 test/test_settings.py         # every setting changes something
 python3 test/probe_sites.py           # live sites; edit SITES at the top
@@ -383,10 +397,10 @@ and that clicking scrolls. Exits non-zero on failure.
 
 **Functionally complete; in release clean-up.** The map, the preview,
 click-to-jump, drag, peek, minimap-only, the settings pages and the
-theme-derived colours all work, and all nine test suites pass. `probe_sites.py`
+theme-derived colours all work, and all ten test suites pass. `probe_sites.py`
 additionally drives GitHub, Wikipedia, MDN, Hacker News and a 20,254-node W3C
-spec and reports map scale, painted pixels, console errors and page-layout
-damage.
+spec and reports map scale, painted pixels, renderer, console errors and
+page-layout damage.
 
 The numbers that look like boasts in this README are measurements, checked
 against the page rather than against themselves: the preview reproduces the
@@ -397,10 +411,12 @@ the map leaks no graphics (red = 0, green = 0 in a 60px strip).
 
 Known limits, in rough priority order:
 
-- **The map is a text raster, not a page schematic.** It is built from the
-  page's own line boxes, so images, borders and empty containers carry no
-  marks; that is Kate's model. A page with heavy grid or flex layout still maps
-  its text where the browser put it, and the preview is unaffected — the
+- **The map is a text raster, and a block diagram when it is zoomed in.** On a
+  long document it is built from the page's own line boxes, so images, borders
+  and empty containers carry no marks; that is Kate's model. On a short one it
+  switches to the semantic blocks described above, where images are outlines
+  and links are their own colour. A page with heavy grid or flex layout still
+  maps its text where the browser put it, and the preview is unaffected — the
   preview is the page.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
@@ -411,7 +427,7 @@ Known limits, in rough priority order:
   hard-debounced `MutationObserver`, which fires constantly on sites like
   GitHub. It works, but the debounce is a guess rather than a measurement.
 - **Only the page's own vertical scroll.** vugluscr can drive an inner
-  scroller; ScrollPeek does not mount on one.
+  scroller; ScrollPeak does not mount on one.
 - **Untested on Firefox for Android, and on sites that virtualise their
   content.**
 
@@ -424,7 +440,7 @@ the extension either cannot inject or has no rail layout at all, so
 
 ## Privacy
 
-No network access, no analytics, no telemetry. ScrollPeek renders locally from
+No network access, no analytics, no telemetry. ScrollPeak renders locally from
 the page you are already looking at and stores nothing beyond your own
 preferences.
 
