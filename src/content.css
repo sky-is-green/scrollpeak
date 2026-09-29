@@ -8,7 +8,11 @@
  * replaceable.
  */
 
+/* --sp-strip, --sp-ink and --sp-accent are written by rail.js from the
+ * resolved palette, so these are only the pre-mount values. */
 :root {
+  --sp-strip: #ffffff;
+  --sp-ink: #1a1a1a;
   --sp-bg: #ffffff;
   --sp-fg: #1a1a1a;
   --sp-border: rgba(0, 0, 0, 0.18);
@@ -34,8 +38,18 @@ html.vugluscr_embedded {
   --vugluscr_track_background: color-mix(in srgb, var(--sp-accent) 11%, transparent);
   --vugluscr_thumb_background: color-mix(in srgb, var(--sp-accent) 30%, transparent);
   --vugluscr_thumb_hover_background: color-mix(in srgb, var(--sp-accent) 50%, transparent);
-  --vugluscr_minimap_background: color-mix(in srgb, var(--sp-accent) 11%, transparent);
-  --vugluscr_minimap_thumb_background: color-mix(in srgb, var(--sp-accent) 50%, transparent);
+  /* The strip's own background, not a tint of the accent: our canvas fills
+     the groove opaquely, so this only shows where it does not reach, and a
+     mismatch there reads as a seam. rail.js sets --sp-strip. */
+  --vugluscr_minimap_background: var(--sp-strip, #ffffff);
+  /* The viewport band sits on the strip, so it is derived from the ink colour
+     -- guaranteed to contrast with it -- rather than from the accent, which on
+     a themed or dark browser can be the same value as the strip. */
+  --vugluscr_minimap_thumb_background: color-mix(in srgb, var(--sp-ink, #ffffff) 34%, transparent);
+  /* Kate's ShowScrollBarMarks. These sit on the strip too, so they come from
+     the same ink colour as the viewport band rather than from the accent, which
+     can be the strip's own colour on a themed or dark browser. */
+  --vugluscr_marker_color: var(--sp-ink, #1a1a1a);
   --vugluscr_minimap_block: color-mix(in srgb, var(--sp-accent) 23%, transparent);
   --vugluscr_minimap_block_group: color-mix(in srgb, var(--sp-accent) 17%, transparent);
   --vugluscr_minimap_block_unknown: color-mix(in srgb, var(--sp-accent) 25%, transparent);
@@ -107,9 +121,11 @@ html.vugluscr_embedded {
 }
 
 .scrollpeak-magnifier__line {
+  /* A run is exactly one line box, so it must never soft-wrap. */
   white-space: pre;
-  line-height: 1;
-  transform-origin: 0 0;
+  /* line-height is set per line, from that line box's measured height, so the
+     text sits in the middle of the box as it does on the page. */
+  line-height: normal;
 }
 
 /* ------------------------------------------------- minimap-only, and peek

@@ -27,11 +27,26 @@ from harness import (  # noqa: E402
 )
 
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Overridable so a deliberate bug can be reinstated in a copy of src/ and this
+# same test run against it, to prove the assertions actually bite.
+BASE = sys.argv[1] if len(sys.argv) > 1 else SRC
+
+
+def lum(css):
+    """WCAG relative luminance from any of the forms these values arrive in."""
+    nums = [int(x) for x in re.findall(r"\d+", css)][:3]
+    r, g, b = nums
+    f = lambda v: (v / 255) / 12.92 if v / 255 <= 0.03928 else (((v / 255) + 0.055) / 1.055) ** 2.4
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+
 def variant(patch):
     """A copy of src/ with different DEFAULT_SETTINGS."""
     tmp = tempfile.mkdtemp(prefix="scrollpeak-appearance-")
     dst = os.path.join(tmp, "ext")
-    shutil.copytree(SRC, dst)
+    shutil.copytree(BASE, dst)
     path = os.path.join(dst, "background.js")
     text = open(path).read()
     for key, value in patch.items():
@@ -76,6 +91,10 @@ if (rail) {
 
 const map = q(".scrollpeak-map");
 if (map) {
+  out.palette = map.dataset.palette || "";
+  const rootCs = getComputedStyle(document.documentElement);
+  out.cssStrip = rootCs.getPropertyValue("--sp-strip").trim();
+  out.cssSource = rootCs.getPropertyValue("--sp-palette-source").trim();
   const W = map.width, H = map.height;
   const d = map.getContext("2d").getImageData(0, 0, W, H).data;
   // The most common opaque colour is the strip background; the marks are
@@ -112,6 +131,10 @@ if (map) {
   }
   out.markLums = [minL, maxL];
   out.markColours = seen.size;
+  // From the resolved palette, which is exact; the painted pixels above are a
+  // spread of antialiased blends.
+  const parts = (map.dataset.palette || "").split("|");
+  out.distinctMarks = Number(parts[2]) || 0;
   // WCAG contrast between the background and whichever extreme is further.
   const ratio = (a, b) => (Math.max(a,b) + 0.05) / (Math.min(a,b) + 0.05);
   out.contrastVsBg = {
@@ -135,7 +158,7 @@ def main():
         proc, m = launch_firefox()
         try:
             def run(patch, label):
-                path = variant(patch) if patch else SRC
+                path = variant(patch) if patch else BASE
                 m.cmd("Addon:Install", {"path": path, "temporary": True})
                 time.sleep(2)
                 m.cmd("WebDriver:Navigate", {"url": server.fixtures + "/article.html"})
@@ -152,16 +175,11 @@ def main():
                   f"strip={d['stripBg']} page={d['pageBg']}")
             # The fixture's page background is #fdfdfc, so a darker shade must
             # be markedly darker.
-            def lum(k):
-                nums = [int(x) for x in re.findall(r"\d+", k)]
-                r, g, b = nums[:3]
-                f = lambda v: (v/255) / 12.92 if v/255 <= 0.03928 else (((v/255) + 0.055) / 1.055) ** 2.4
-                return 0.2126*f(r) + 0.7152*f(g) + 0.0722*f(b)
             check("it is darker than the page's",
                   lum(d["stripBg"]) < lum(d["pageBg"]) * 0.2,
                   f"strip lum {lum(d['stripBg']):.4f} vs page {lum(d['pageBg']):.4f}")
             check("marks keep the page's colours, not one flat colour",
-                  d["markColours"] >= 3, f"{d['markColours']} distinct")
+                  d["distinctMarks"] >= 3, f"{d['distinctMarks']} distinct resolved")
             best = max(d["contrastVsBg"]["vsDarkest"], d["contrastVsBg"]["vsLightest"])
             check("marks contrast with the strip", best >= 3,
                   f"best {best:.1f}:1 (darkest {d['contrastVsBg']['vsDarkest']:.1f}, "
@@ -171,6 +189,27 @@ def main():
             check("user colour is used", d["stripBg"] == "255,255,255", str(d["stripBg"]))
             # On a white strip, the page's dark text has to be kept dark.
             check("marks are still pushed to contrast on a light strip",
+                  max(d["contrastVsBg"]["vsDarkest"],
+                      d["contrastVsBg"]["vsLightest"]) >= 3,
+                  f"best {max(d['contrastVsBg']['vsDarkest'], d['contrastVsBg']['vsLightest']):.1f}:1")
+
+            # The reported bug. <input type="color"> only ever produces
+            # "#rrggbb", and parseRgb used to accept nothing but rgb(), so
+            # every colour the user picked was silently discarded and the strip
+            # never changed. The rgb() case above is what hid it.
+            d = run({"mapBackground": "#b03000"},
+                    "override in hex, the form a colour input actually gives")
+            check("a hex colour from the picker is used",
+                  d["stripBg"] == "176,48,0", str(d["stripBg"]))
+            # The browser normalises a custom property's value, so the spaces
+            # go: rgb(176,48,0), not rgb(176, 48, 0).
+            check("the CSS variable follows it too",
+                  d["cssStrip"] == "rgb(176,48,0)", d["cssStrip"])
+
+            d = run({"markColour": "#ff0000"}, "one colour for every mark")
+            check("every mark takes the chosen colour", d["distinctMarks"] == 1,
+                  f"{d['distinctMarks']} distinct resolved")
+            check("and it still contrasts with the strip",
                   max(d["contrastVsBg"]["vsDarkest"],
                       d["contrastVsBg"]["vsLightest"]) >= 3,
                   f"best {max(d['contrastVsBg']['vsDarkest'], d['contrastVsBg']['vsLightest']):.1f}:1")
@@ -207,6 +246,24 @@ def main():
             """, "args": []})
             v = r.get("value", r)
             check("scrolling brings it back", v["onScreen"] and v["visible"], str(v))
+
+            # With a Firefox theme installed, theme.getCurrent() reports real
+            # colours and the strip is derived from the theme's toolbar. With
+            # the default theme it returns {} -- verified, which is why the
+            # fallback is the page's own background.
+            print("\nwith a Firefox theme installed")
+            m.cmd("Addon:Install",
+                  {"path": os.path.join(HERE, "fixtures", "theme"), "temporary": True})
+            time.sleep(2)
+            d = run({}, "default follows the installed theme")
+            check("the theme is detected", '"named":true' in d["palette"],
+                  d["palette"].split("|", 1)[-1])
+            check("the strip comes from the theme's toolbar, not the page",
+                  d["cssSource"] == "firefox theme", d["cssSource"])
+            check("and it is a darker shade of the theme's toolbar",
+                  lum(d["stripBg"]) < lum("33,37,43"),
+                  f"strip {d['stripBg']} vs toolbar 33,37,43")
+
         finally:
             stop_firefox(proc)
 

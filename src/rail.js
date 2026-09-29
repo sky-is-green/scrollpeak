@@ -20,7 +20,7 @@
 // story -- building the map is expensive, stretching it is not.
 
 (function () {
-  function mount(settings) {
+  function mount(settings, theme) {
     const scroller = document.scrollingElement || document.documentElement;
     const content = document.body;
     if (!scroller || !content) return null;
@@ -70,10 +70,34 @@
     // never show the viewport in two different places.
     map.setThumbEl(minimap.thumb?.domNode ?? null);
 
-    // Strip background and mark contrast. Also re-applied after every
-    // collect(), because a page's background can change with a theme or a
-    // dark-mode media query and the default is derived from it.
-    map.setAppearance(settings);
+    // Strip background and mark contrast. Re-applied wherever the inputs can
+    // have moved: a relayout, and every collect(), because a page's background
+    // can change under a dark-mode media query and the default is derived
+    // from it.
+    let themePalette = theme || null;
+
+    /**
+     * Push the resolved palette at the CSS.
+     *
+     * Every colour the rail draws comes from here, so the strip, the thumb and
+     * the markers cannot end up in three unrelated schemes -- and the accent
+     * follows the Firefox theme when one is installed, rather than being a
+     * hardcoded blue that is wrong on every machine but the one it was picked
+     * on. Written to <html> because that is where content.css sets them, and
+     * where vugluscr reads them from.
+     */
+    function applyAppearance() {
+      map.setAppearance({ ...settings, theme: themePalette });
+      const root = document.documentElement.style;
+      const { background, ink, accent, source } = map.palette;
+      root.setProperty("--sp-strip", background);
+      root.setProperty("--sp-ink", ink);
+      if (accent) root.setProperty("--sp-accent", accent);
+      // Read by the appearance test, and the first thing to check when the
+      // strip is the wrong colour.
+      root.setProperty("--sp-palette-source", source);
+    }
+    applyAppearance();
 
     let rebuildTimer = null;
 
@@ -106,7 +130,7 @@
 
     function relayout() {
       const h = strip.clientHeight || window.innerHeight;
-      map.setAppearance(settings);
+      applyAppearance();
       if (map.setSize(settings.minimapWidth, h)) rebuild();
     }
 
@@ -119,6 +143,18 @@
     // never triggers a rebuild on its own, it only repaints.
     window.addEventListener("scroll", repaint, { passive: true });
     window.addEventListener("resize", relayout, { passive: true });
+
+    // The system appearance can change while the page is open: the OS flips at
+    // sunset, or the user changes it in the browser. The default strip colour
+    // follows it when the page paints no background of its own, so re-derive and
+    // repaint. Only colours change here, so nothing is rebuilt.
+    const scheme = matchMedia("(prefers-color-scheme: dark)");
+    const onSchemeChange = () => {
+      applyAppearance();
+      repaint();
+    };
+    if (scheme.addEventListener) scheme.addEventListener("change", onSchemeChange);
+    else scheme.addListener(onSchemeChange);
 
     const observer = new ResizeObserver(relayout);
     observer.observe(content);
@@ -137,9 +173,14 @@
 
     // First paint. Kate defers this to showEvent; we cannot wait for the
     // strip to be visible, so build it straight away.
-    map.collect(content);
-    map.buildPixmap();
-    repaint();
+    try {
+      map.collect(content);
+      map.buildPixmap();
+      repaint();
+    } catch (err) {
+      document.documentElement.dataset.sperr = String(err && err.stack || err);
+      throw err;
+    }
 
     // --- rail-level appearance -------------------------------------------
     //
@@ -241,6 +282,16 @@
       rebuild,
 
       /**
+       * The browser's theme changed underneath us. Re-derive the colours and
+       * repaint; the map's geometry is untouched, so no rebuild is needed.
+       */
+      setTheme(next) {
+        themePalette = next || null;
+        applyAppearance();
+        repaint();
+      },
+
+      /**
        * Kate's scrollbar marks: this.put them in lanes by depth, so h1/h2 --
        * the ones worth finding -- take the outer lanes.
        */
@@ -275,6 +326,8 @@
           "scrollpeak-minimap-only", "scrollpeak-peek", "scrollpeak-visible");
         window.removeEventListener("scroll", repaint);
         window.removeEventListener("resize", relayout);
+        if (scheme.removeEventListener) scheme.removeEventListener("change", onSchemeChange);
+        else scheme.removeListener(onSchemeChange);
         try {
           rail.dispose();
         } catch {

@@ -78,6 +78,12 @@
         <button type="button" class="link" id="mapBackground-reset">Auto</button>
       </label>
 
+      <label class="colour">
+        <span class="colour__label">Mark colour</span>
+        <input type="color" id="markColour" />
+        <button type="button" class="link" id="markColour-reset">Auto</button>
+      </label>
+
       <footer class="foot">
         <button type="button" class="link" id="open-options">All settings</button>
         <span class="foot__sites" id="site-count"></span>
@@ -88,6 +94,9 @@
         </nav>
       </footer>
     </main>
+    <!-- Same colour maths the content script runs, so these swatches show the
+         colour the strip will actually be. -->
+    <script src="../colour.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

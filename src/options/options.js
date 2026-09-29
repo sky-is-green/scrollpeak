@@ -60,48 +60,81 @@ async function load() {
  * and "example.com" should not become two different entries.
  */
 /**
- * The strip colour.
+ * A colour that has a default, which a colour input cannot represent.
  *
- * An empty setting means "derive a darker shade of the page's background",
- * which a colour input cannot represent. So the swatch shows the derived
- * value and is marked as following the page, and the button is what clears an
- * override.
+ * "" means "follow the browser and the page", and the swatch then has to show
+ * what that will actually resolve to. The arithmetic is in colour.js -- the
+ * same file the content script uses -- so the swatch and the strip cannot
+ * disagree. Where even that is impossible (the page's own background is not
+ * knowable from an extension page) the swatch falls back to the system's own
+ * appearance and the hint says so.
  */
 function wireColour(settings) {
-  const input = $("mapBackground");
-  const reset = $("mapBackground-reset");
-  const hint = $("mapBackground-hint");
+  const C = globalThis.ScrollPeekColour;
 
-  // The derived colour is a darkened page background, which the options page
-  // cannot know -- it is not looking at a page. Show the value that is in
-  // force, and say which of the two it is.
-  let following = !settings.mapBackground;
-  input.value = settings.mapBackground || DERIVED_PLACEHOLDER;
+  const paint = async () => {
+    const current = await browser.runtime.sendMessage({
+      type: "scrollpeak:getSettings",
+    });
+    const theme = await browser.runtime
+      .sendMessage({ type: "scrollpeak:getTheme" })
+      .catch(() => null);
 
-  const describe = () => {
-    hint.textContent = following
-      ? "Following the page: a darker shade of its own background."
-      : `Using ${settings.mapBackground}.`;
+    const strip = C.resolveStripBackground({
+      chosen: current.mapBackground,
+      theme: theme?.base,
+      // Not knowable here: this page is not the one being minimapped.
+      page: "",
+      systemDark: matchMedia("(prefers-color-scheme: dark)").matches,
+      amount: Number(current.darkenAmount),
+    });
+    const marks = C.resolveStripBackground({
+      chosen: current.markColour,
+      // With no page to read, the marks' own default is the theme's text
+      // colour, or the far end of the strip.
+      theme: current.markColour ? null : theme?.text || current.markColour,
+      page: "",
+      systemDark: false,
+      amount: 0,
+    });
+
+    const stripInput = $("mapBackground");
+    const markInput = $("markColour");
+    stripInput.value = current.mapBackground || rgbHex(strip.rgb);
+    markInput.value = current.markColour || rgbHex(marks.rgb);
+    $("mapBackground-hint").textContent = current.mapBackground
+      ? `Your colour, ${current.mapBackground}.`
+      : `Following ${strip.source}: ${rgbHex(strip.rgb)}.`;
+    $("markColour-hint").textContent = current.markColour
+      ? `One colour for every mark, ${current.markColour}.`
+      : "The page's own text colours, each nudged until it contrasts.";
   };
-  describe();
 
-  input.addEventListener("change", async () => {
-    const next = await persist({ mapBackground: input.value });
-    following = !next.mapBackground;
-    describe();
-  });
+  for (const [input, reset, key] of [
+    ["mapBackground", "mapBackground-reset", "mapBackground"],
+    ["markColour", "markColour-reset", "markColour"],
+  ]) {
+    $(input).addEventListener("change", async () => {
+      await persist({ [key]: $(input).value });
+      await paint();
+    });
+    $(reset).addEventListener("click", async () => {
+      await persist({ [key]: "" });
+      await paint();
+    });
+  }
 
-  reset.addEventListener("click", async () => {
-    const next = await persist({ mapBackground: "" });
-    settings.mapBackground = next.mapBackground;
-    following = !next.mapBackground;
-    input.value = settings.mapBackground || DERIVED_PLACEHOLDER;
-    describe();
-  });
+  // The two amounts that move the resolved colour, so the swatch tracks the
+  // sliders as they move rather than only on release.
+  for (const id of ["darkenAmount", "markContrast"]) {
+    $(id).addEventListener("change", paint);
+  }
+  paint();
 }
 
-/** Swatch shown while the colour is being derived. Matches the default darken. */
-const DERIVED_PLACEHOLDER = "#2a2a33";
+function rgbHex(rgb) {
+  return "#" + rgb.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
+}
 
 function wireSiteForm() {
   const form = $("addsite");

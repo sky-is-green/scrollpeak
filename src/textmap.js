@@ -27,6 +27,12 @@
 // faithful to the page, not less.
 
 (function () {
+  // All the colour maths lives in colour.js, shared with the options page so
+  // the swatch there shows the colour the strip will actually be.
+  const {
+    parseRgb, resolveColor, ensureContrast, withAlpha, resolveStripBackground,
+  } = globalThis.ScrollPeekColour;
+
   // Kate: s_lineWidth, s_pixelMargin, s_linePixelIncLimit
   const S_LINE_WIDTH = 100;
   const S_PIXEL_MARGIN = 8;
@@ -74,7 +80,12 @@
        * be. See resolveColours().
        */
       this.mapBackground = "#ffffff";
+      this._mapBackgroundRgb = [255, 255, 255];
       this.markContrast = 3;
+      /** The browser theme palette, once resolved. See resolveColours(). */
+      this.theme = null;
+      /** Everything the rail draws, resolved to one scheme. */
+      this.palette = { background: "#ffffff", ink: "#ffffff", accent: null, source: "?" };
       /** Per-collect memo of original mark colour -> adjusted. */
       this.markColours = new Map();
       this.charIncrement = 1;
@@ -157,13 +168,13 @@
         const bounds = this.#charBounds(node, text, rects);
 
         for (let i = 0; i < rects.length; i++) {
-          const slice = text.slice(bounds[i], bounds[i + 1]);
-          if (!slice.trim()) continue;
+          const raw = text.slice(bounds[i], bounds[i + 1]);
+          if (!raw.trim()) continue;
           lines.push({
             y: rects[i].top + scrollY,
             height: rects[i].height,
             x: rects[i].left + scrollX,
-            text: slice,
+            text: style.preserve ? raw : renderedText(raw),
             color: style.color,
             family: style.family,
             fontSize: style.fontSize,
@@ -211,8 +222,7 @@
       this.contentLeft = contentLeft(lines);
 
       this.docHeight = maxY;
-      this.background =
-        getComputedStyle(document.body).backgroundColor || "#ffffff";
+      this.background = this.pageBackground();
       this.resolveColours();
 
       this.revision++;
@@ -274,43 +284,101 @@
     /**
      * Settings that affect how the strip is coloured.
      *
-     * `mapBackground` is a CSS colour, or "" for the default. The default is a
-     * darker shade of the page's own background, so the strip reads as part
-     * of the site rather than as a foreign grey bar -- but darker, because
-     * Kate's minimap sits on the editor's background and the marks are the
-     * text's own colours, and a page's text colours are chosen against the
-     * page, not against our strip.
+     * Both colours are CSS colours, or "" for the default. Anything the CSS
+     * parser accepts is accepted here; see resolveColor().
      *
-     * Which is why the marks are then forced to contrast. A dark grey that is
-     * perfectly legible in a light article vanishes against a dark strip.
+     * `theme` is the palette the background resolved from the installed Firefox
+     * theme, or null. See resolveColours().
      */
-    setAppearance({ mapBackground, markContrast, darkenAmount }) {
+    setAppearance({ mapBackground, markColour, markContrast, darkenAmount, theme } = {}) {
       this._mapBackgroundPref = mapBackground || "";
+      this._markColourPref = markColour || "";
       this.markContrast = Number(markContrast) || 3;
       this._darkenAmount = darkenAmount == null ? 0.82 : Number(darkenAmount);
+      this.theme = theme || null;
       this.resolveColours();
     }
 
-    resolveColours() {
-      const pageRgb = parseRgb(this.background) || [255, 255, 255];
-      const chosen = parseRgb(this._mapBackgroundPref);
-      this.mapBackground = chosen
-        ? `rgb(${chosen.join(",")})`
-        : `rgb(${darken(pageRgb, this._darkenAmount).join(",")})`;
+    /**
+     * The page's own background, or null if it has none.
+     *
+     * Read from <body> alone this is wrong more often than it is right: a body
+     * background is transparent by default, and plenty of sites set the
+     * background on <html>, or on a full-bleed wrapper. Walking up to the
+     * first ancestor that actually paints one is what a person means by "the
+     * page's background", and it is what the default strip colour is derived
+     * from.
+     */
+    pageBackground() {
+      for (let el = document.body; el; el = el.parentElement) {
+        const value = getComputedStyle(el).backgroundColor;
+        const rgb = parseRgb(value);
+        if (!rgb) continue;
+        // Fully transparent contributes nothing; semi-transparent is the page
+        // really painting, so it counts.
+        const alpha = /rgba?\([^)]*?,\s*([\d.]+)\s*\)$/.exec(value || "");
+        if (alpha && Number(alpha[1]) === 0) continue;
+        return `rgb(${rgb.join(",")})`;
+      }
+      return null;
+    }
 
-      const bg = chosen || darken(pageRgb, this._darkenAmount);
+    /**
+     * Work out the strip's background, and a legible colour for every mark.
+     *
+     * The background comes from colour.js, which the options page also calls,
+     * so the swatch it shows is the colour the strip will actually be.
+     *
+     * The marks are then forced to contrast with whatever came out, because
+     * they are the page's text colours and those were chosen against the page,
+     * not against our strip.
+     */
+    resolveColours() {
+      const strip = resolveStripBackground({
+        chosen: this._mapBackgroundPref,
+        theme: this.theme?.base,
+        page: this.background,
+        // The only thing about the machine a content script can observe:
+        // measured, Firefox's own widget colours read light even when
+        // ui.systemUsesDarkTheme is 1, and theme.getCurrent() is empty unless
+        // a theme is installed.
+        systemDark: matchMedia("(prefers-color-scheme: dark)").matches,
+        amount: this._darkenAmount,
+      });
+      const bg = strip.rgb;
+      this.paletteSource = strip.source;
       this._mapBackgroundRgb = bg;
+      this.mapBackground = `rgb(${bg.join(",")})`;
+
+      // A single colour for every mark, if the user asked for one. Otherwise
+      // the page's own, which is Kate's arrangement and the reason a heading
+      // reads differently from body text in the strip.
+      const forced = resolveColor(this._markColourPref);
+      const fixedForced = forced && ensureContrast(forced, bg, this.markContrast);
+
       this.markColours.clear();
       for (const line of this.lines) {
         if (this.markColours.has(line.color)) continue;
-        const rgb = parseRgb(line.color);
+        const rgb = fixedForced || parseRgb(line.color);
         if (!rgb) continue;
         const fixed = ensureContrast(rgb, bg, this.markContrast);
-        this.markColours.set(
-          line.color,
-          `rgb(${fixed.join(",")})`,
-        );
+        this.markColours.set(line.color, `rgb(${fixed.join(",")})`);
       }
+
+      // One palette for everything the rail draws, so the strip, the thumb and
+      // the markers cannot end up in three different colour schemes. `ink` is a
+      // colour that reads against the strip, used for the rail's own chrome.
+      const ink = ensureContrast(
+        resolveColor(this.theme?.text) || [255, 255, 255],
+        bg,
+        this.markContrast,
+      );
+      this.palette = {
+        background: this.mapBackground,
+        ink: `rgb(${ink.join(",")})`,
+        accent: resolveColor(this.theme?.accent) || null,
+        source: this.paletteSource,
+      };
     }
 
     /** Left edge of the main content column, robustly. */
@@ -370,6 +438,10 @@
       // documents. We do the same, but the real cost saving here is the
       // per-element getComputedStyle, which the cache already dedupes.
       const size = parseFloat(cs.fontSize) || 16;
+      // Does this element keep its source whitespace? <pre> and white-space:pre*
+      // do, and for those the raw text *is* the rendered text. Everything else
+      // collapses runs of whitespace, so the raw text is not.
+      const preserve = /^\s*(pre|pre-wrap|pre-line|break-spaces)\s*$/.test(cs.whiteSpace);
       const style = simpleMode
         ? {
             color: cs.color,
@@ -377,6 +449,7 @@
             fontSize: size,
             bold: false,
             italic: false,
+            preserve,
           }
         : {
             color: cs.color,
@@ -384,6 +457,7 @@
             fontSize: size,
             bold: parseInt(cs.fontWeight, 10) >= 600,
             italic: cs.fontStyle === "italic" || cs.fontStyle === "oblique",
+            preserve,
           };
       cache.set(parent, style);
       return style;
@@ -519,6 +593,23 @@
       // it is filled with the page background first -- so "does the map reach
       // the bottom" cannot be answered by looking at the canvas. Published so
       // the alignment test can assert the drawn rect instead.
+      // Published alongside the other diagnostics, and read by the appearance
+      // test: the strip colour, the theme it was derived from, and how many
+      // distinct mark colours survived. Those are exactly the things that are
+      // otherwise invisible until they are wrong.
+      //
+      // The mark count is read from the resolved palette rather than counted
+      // off the canvas, because the pixmap is stretched to the groove and every
+      // mark edge is interpolated on the way, so the painted pixels are a
+      // spread of blends rather than the colours that were asked for.
+      const distinctMarks = new Set(this.markColours.values()).size;
+      const palette =
+        `${this.mapBackground}|${JSON.stringify(this.theme)}|${distinctMarks}`;
+      if (palette !== this._paletteKey) {
+        this._paletteKey = palette;
+        this.canvas.dataset.palette = palette;
+      }
+
       const rectKey = `${Math.round(docTop)}:${Math.round(docHeight)}`;
       if (rectKey !== this._rectKey) {
         this._rectKey = rectKey;
@@ -555,7 +646,7 @@
       }
 
       // Fade what is not currently visible. Kate: backgroundColor at alpha 110.
-      const fade = withAlpha(this.mapBackground, 110);
+      const fade = withAlpha(this._mapBackgroundRgb, 110);
       ctx.fillStyle = fade;
       if (band.top > 0) ctx.fillRect(0, 0, this.width, band.top);
       if (band.top + band.height < grooveHeight) {
@@ -564,7 +655,7 @@
       }
 
       // Kate's thin line limiting the scrollbar.
-      ctx.fillStyle = withAlpha(this.mapBackground, 255);
+      ctx.fillStyle = withAlpha(this._mapBackgroundRgb, 255);
       ctx.fillRect(0, 0, 1, grooveHeight);
 
       // Kate also draws a delimiter at the bottom of the map, which only has
@@ -646,77 +737,24 @@
   }
 
   /**
-   * Relative luminance, per WCAG.
+   * The slice of a text node as the browser actually renders it.
    *
-   * Used to decide whether a mark is legible against the map's background. The
-   * minimap's marks are the page's own text colours, which are chosen to be
-   * legible against the page's background -- not against the strip's. On a
-   * light page the strip is darker than the page, so a dark grey mark that
-   * reads perfectly well in the article disappears in the map.
-   */
-  function luminance(rgb) {
-    const [r, g, b] = rgb.map((v) => {
-      const c = v / 255;
-      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  }
-
-  /** WCAG contrast ratio, 1 to 21. */
-  function contrast(a, b) {
-    const la = luminance(a);
-    const lb = luminance(b);
-    const [hi, lo] = la > lb ? [la, lb] : [lb, la];
-    return (hi + 0.05) / (lo + 0.05);
-  }
-
-  /** Parse a computed colour to [r,g,b], or null if it is not a plain colour. */
-  function parseRgb(color) {
-    const m = /^rgba?\(([^)]+)\)$/.exec((color || "").trim());
-    if (!m) return null;
-    const parts = m[1].split(/[,\s/]+/).filter(Boolean).map(Number);
-    if (parts.length < 3 || parts.slice(0, 3).some(Number.isNaN)) return null;
-    return parts.slice(0, 3);
-  }
-
-  /** Mix towards black by `amount`, which is what the default background is. */
-  function darken(rgb, amount) {
-    return rgb.map((v) => Math.round(v * (1 - amount)));
-  }
-
-  /**
-   * Nudge a colour along the lightness axis until it contrasts with `bg`.
+   * An HTML text node still holds the newlines and runs of spaces from the
+   * source, and the browser collapses each of those to a single space when it
+   * lays the line out. The rects in collect() come from that layout, so the
+   * slice has to be put back into the same shape -- otherwise the collected
+   * line is not the line on screen.
    *
-   * Moving towards whichever of black or white is further from the background
-   * keeps the hue, so a link stays link-coloured and a heading stays
-   * heading-coloured -- only its lightness changes. Returns the input
-   * unchanged if the target cannot be met, which happens for mid-greys
-   * against a mid-grey background.
-   */
-  function ensureContrast(rgb, bg, target) {
-    if (contrast(rgb, bg) >= target) return rgb;
-    const bgL = luminance(bg);
-    const towardsWhite = bgL < 0.5;
-    let best = rgb;
-    for (let step = 0; step <= 20; step++) {
-      const t = towardsWhite ? step / 20 : 1 - step / 20;
-      const candidate = towardsWhite
-        ? rgb.map((v, i) => Math.round(v + (255 - v) * t))
-        : rgb.map((v) => Math.round(v * (1 - t)));
-      if (contrast(candidate, bg) >= target) return candidate;
-      best = candidate;
-    }
-    return best;
-  }
-
-  /**
-   * Describe an element for the preview.
+   * This is not cosmetic. The preview draws a run with white-space: pre, so a
+   * surviving source newline becomes a real line break: the run spills onto a
+   * second line and collides with the run below it, which is what a
+   * hard-wrapped HTML source does to every paragraph. Leading and trailing
+   * whitespace goes for the same reason -- the browser discards it at a soft
+   * wrap, so keeping it would indent every line but the first.
    *
-   * The preview clones these into the page rather than rasterising them, so
-   * there is nothing to cache and nothing to load: an inline <svg> cloned
-   * into this document keeps the page's own styling, which is what most icon
-   * systems rely on. A serialised data URL does not, and its image load
-   * cannot be relied on to settle from a content script.
+   * Not applied where whitespace is genuinely significant: <pre> and the
+   * white-space: pre* values keep their source text, so there the raw slice
+   * already is the rendered text.
    */
   function makeBox(el, rect, scrollX, scrollY) {
     return {
@@ -735,19 +773,13 @@
 
   /** 5th-percentile x, so a single far-left outlier cannot shift the column. */
   function contentLeft(lines) {
-    if (!lines.length) return 0;
     const xs = lines.map((l) => l.x).sort((a, b) => a - b);
+    if (!xs.length) return 0;
     return xs[Math.floor(xs.length * 0.05)] || 0;
   }
 
-  /** Apply an alpha to a computed rgb()/rgba() colour. Kate sets alpha on a QColor. */
-  function withAlpha(color, alpha) {
-    const m = /^rgba?\(([^)]+)\)$/.exec(color.trim());
-    if (!m) return color;
-    const parts = m[1].split(/[,\s/]+/).filter(Boolean).map(Number);
-    const [r, g, b] = parts;
-    if ([r, g, b].some(Number.isNaN)) return color;
-    return `rgba(${r}, ${g}, ${b}, ${alpha / 255})`;
+  function renderedText(slice) {
+    return slice.replace(/\s+/g, " ").trim();
   }
 
   globalThis.ScrollPeekTextMap = { TextMap, REBUILD_DELAY_MS, S_PIXEL_MARGIN };

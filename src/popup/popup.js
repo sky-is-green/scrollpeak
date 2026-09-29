@@ -61,20 +61,45 @@ async function init() {
   bindCheckbox("hideTrack", settings.hideTrack);
   bindCheckbox("hideWhenIdle", settings.hideWhenIdle);
 
-  // An empty colour means "derive a darker shade of the page's background".
-  // A colour input cannot show empty, so it mirrors the live value and the
-  // Auto button is what clears the override.
-  const bg = $("mapBackground");
-  // Empty means "derive a darker shade of the page's background", which a
-  // colour input cannot show, so it stands in with the same swatch the
-  // options page uses.
-  const DERIVED = "#2a2a33";
-  bg.value = settings.mapBackground || DERIVED;
-  bg.addEventListener("change", () => save({ mapBackground: bg.value }));
-  $("mapBackground-reset").addEventListener("click", () => {
-    save({ mapBackground: "" });
-    bg.value = DERIVED;
-  });
+  // A colour that has a default cannot be shown as empty in a colour input, so
+  // the swatch shows what the default will actually resolve to. Same
+  // arithmetic as the content script (colour.js), so the two cannot disagree.
+  const C = globalThis.ScrollPeekColour;
+  const rgbHex = (rgb) =>
+    "#" + rgb.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
+
+  async function paintColours() {
+    const [current, theme] = await Promise.all([
+      browser.runtime.sendMessage({ type: "scrollpeak:getSettings" }),
+      browser.runtime.sendMessage({ type: "scrollpeak:getTheme" }).catch(() => null),
+    ]);
+    const strip = C.resolveStripBackground({
+      chosen: current.mapBackground,
+      theme: theme?.base,
+      // The page being minimapped is not this popup, so its own background is
+      // not knowable here; the browser's is, and that is what wins by default.
+      page: "",
+      systemDark: matchMedia("(prefers-color-scheme: dark)").matches,
+      amount: Number(current.darkenAmount),
+    });
+    $("mapBackground").value = current.mapBackground || rgbHex(strip.rgb);
+    $("markColour").value = current.markColour || rgbHex(
+      C.ensureContrast(
+        C.resolveColor(current.markColour || theme?.text) || [255, 255, 255],
+        strip.rgb,
+        Number(current.markContrast) || 3,
+      ),
+    );
+  }
+
+  for (const [id, key] of [["mapBackground", "mapBackground"], ["markColour", "markColour"]]) {
+    $(id).addEventListener("change", () => save({ [key]: $(id).value }));
+    $(`${key}-reset`).addEventListener("click", async () => {
+      await save({ [key]: "" });
+      await paintColours();
+    });
+  }
+  paintColours();
 
   const excluded = (settings.disabledSites || []).length;
   $("site-count").textContent = excluded

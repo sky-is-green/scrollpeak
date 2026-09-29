@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "ScrollPeek probe theme",
+  "version": "1.0",
+  "description": "Not for use. A Firefox theme with known colours, so the test can prove the minimap's default follows an installed theme.",
+  "theme": {
+    "colors": {
+      "frame": "rgb(40, 44, 52)",
+      "toolbar": "rgb(33, 37, 43)",
+      "toolbar_text": "rgb(229, 229, 229)",
+      "tab_background_text": "rgb(229, 229, 229)"
+    }
+  }
+}

@@ -139,10 +139,20 @@
       const el = document.createElement("span");
       el.className = "scrollpeak-magnifier__line";
       el.textContent = line.text;
-      place(el, line.x - left, line.y - centre, 0, line.height);
+      // Every axis scaled by the same factor. Kate scales the whole render,
+      // so the font, the positions and the spacing all move together; scaling
+      // only the font leaves the line rhythm at 1/0.75 of where it should be
+      // and the preview reads as broken spacing.
+      // No width and no height: a run is one line box, so it sizes itself, and
+      // forcing a box would clip a slice that turned out to wrap rather than
+      // showing it.
+      place(el, (line.x - left) * SCALE, (line.y - centre) * SCALE, 0, 0);
       el.style.color = line.color;
       el.style.fontFamily = line.family;
       el.style.fontSize = `${Math.max(1, Math.round(line.fontSize * SCALE))}px`;
+      // The page's own line box, so the text sits in the middle of it exactly
+      // as it does on the page rather than hanging from the top.
+      el.style.lineHeight = `${Math.max(1, Math.round(line.height * SCALE))}px`;
       if (line.bold) el.style.fontWeight = "600";
       if (line.italic) el.style.fontStyle = "italic";
       return el;
@@ -200,7 +210,7 @@
       node.removeAttribute("name");
       for (const el2 of node.querySelectorAll("[id]")) el2.removeAttribute("id");
 
-      place(node, box.x - left, box.y - centre, w, h);
+      place(node, (box.x - left) * SCALE, (box.y - centre) * SCALE, w, h);
       return node;
     }
 

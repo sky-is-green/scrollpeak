@@ -200,21 +200,48 @@ These are web-specific, with no analogue in an editor:
 | Hide until I scroll or approach | off | Parks the rail off the right edge. It returns on scroll, wheel, key press, or when the pointer comes within the trigger distance. |
 | Trigger distance | 48px | How close to the right edge counts as "near". |
 | Stay visible for | 1.6s | How long it stays after a trigger. |
-| Strip colour | follows the page | The minimap's background. |
-| Darken the page background by | 82% | How far to darken, for the default strip colour. |
+| Strip colour | follows the browser | The minimap's background. |
+| Mark colour | the page's own | One colour for every mark, instead of each line keeping its own. |
+| Darken the background by | 82% | How far to darken, for the default strip colour. |
 | Minimum mark contrast | 3:1 | WCAG ratio the marks must reach against the strip. |
 
 **On the strip colour and contrast.** Kate fills the minimap with the editor
 background and draws the text's own colours into it, so his marks contrast by
 construction. A page's text colours are chosen against the *page*, not against
 our strip, so a dark grey that is perfectly legible in a light article vanishes
-on a dark strip. The default is therefore a darker shade of the page's own
-background — closer to Kate than a fixed grey, and still a background the marks
-can be forced against.
+on a dark strip. The marks are therefore forced to contrast, and only their
+lightness moves, so a link stays link-coloured. Measured on the fixture, the
+page's 1036 distinct mark colours survive at 3.2:1 by default and 17:1 on a
+light override.
 
-The marks keep their hue and only their lightness moves, so a link stays
-link-coloured. Measured on the fixture, the page's 1035 distinct mark colours
-survive and the strip reaches 3.2:1 by default, 17:1 on a light override.
+**On the default colour following the browser.** The default strip colour is a
+darker shade of, in order of preference:
+
+1. your Firefox theme's `toolbar` (or `frame`, `popup`, `sidebar`);
+2. the page's own background — the first ancestor from `<body>` upward that
+   actually paints one, since a body background is transparent by default and
+   many sites set theirs on `<html>` or a full-bleed wrapper;
+3. the system's light or dark appearance, for a page that paints nothing.
+
+`browser.theme.onUpdated` re-derives and repaints in place, so changing theme
+does not reload the page. `prefers-color-scheme` is watched for the same reason.
+
+Two things measured rather than assumed, because they decide how much of this
+is possible:
+
+- **`theme.getCurrent()` is `{}` unless a theme is installed.** With the default
+  theme it returns no colours at all, so there is nothing to read. The fallback
+  to the page is what covers that case.
+- **A content script cannot see Firefox's own widget colours.** `ButtonFace`,
+  `AccentColor` and `-moz-Dialog` all resolve in a page, and they resolve to
+  Firefox's *light* palette — measured identical with
+  `ui.systemUsesDarkTheme` set to 1, while `prefers-color-scheme` correctly
+  reported dark. So `prefers-color-scheme` is the only live signal about the
+  machine a page can get, and it is all the third step above uses.
+
+`src/colour.js` holds that arithmetic and is loaded by the content script *and*
+by the options page and popup, so the swatch in the settings is the colour the
+strip will actually be rather than a placeholder.
 
 **On peek.** The rail is transformed off-screen rather than hidden, so it keeps
 its box: the page's padding does not change when it slides away, and the
@@ -234,6 +261,9 @@ python3 test/smoke.py                 # map, preview, click-to-jump, hover
 python3 test/verify_alignment.py     # map, band, thumb and preview agree
 python3 test/verify_hover_tracking.py # the preview follows a moving pointer
 python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
+python3 test/verify_graphics.py       # images, SVG, canvas and backgrounds
+python3 test/verify_preview_lines.py  # the preview reproduces the page's lines
+python3 test/test_appearance.py       # colour, contrast, minimap-only, peek
 python3 test/test_settings.py         # every setting changes something
 python3 test/probe_sites.py           # live sites; edit SITES at the top
 ```

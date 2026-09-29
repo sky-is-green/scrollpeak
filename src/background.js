@@ -47,7 +47,13 @@ const DEFAULT_SETTINGS = {
   // strip, so the marks are then forced to contrast with whatever we get.
   mapBackground: "",
 
-  // How far to darken the page background for the default strip colour.
+  // One colour for every mark, or "" for the page's own text colours. The
+  // page's own is Kate's arrangement and the reason a heading reads differently
+  // from body text in the strip; this is for a monochrome strip, which some
+  // people want and which is easier to read at 60px.
+  markColour: "",
+
+  // How far to darken the browser's background for the default strip colour.
   darkenAmount: 0.82,
 
   // WCAG contrast ratio the marks must reach against the strip. 3 is enough
@@ -102,6 +108,59 @@ function isEnabledForUrl(settings, url) {
 function pageScrolls() {
   const scroller = document.scrollingElement || document.documentElement;
   return scroller.scrollHeight > window.innerHeight;
+}
+
+/**
+ * Which of the theme's colours should the minimap follow?
+ *
+ * In order of how deliberate a theme's choice of them usually is. `toolbar` is
+ * the browser's main surface and the one a theme is most likely to have set on
+ * purpose; `frame` is the window behind it; `popup` and `sidebar` are surfaces
+ * too, so a theme that set only one of those still has an opinion about what
+ * the browser looks like.
+ */
+const THEME_BASE_KEYS = ["toolbar", "frame", "popup", "sidebar", "button_background"];
+
+/** The matching text colours, same reasoning. */
+const THEME_TEXT_KEYS = [
+  "toolbar_text", "tab_background_text", "frame_text", "popup_text",
+  "sidebar_text", "button_text",
+];
+
+function firstColour(colors, keys) {
+  for (const key of keys) {
+    if (colors[key]) return colors[key];
+  }
+  return null;
+}
+
+/**
+ * The browser's own colours, for the minimap's default.
+ *
+ * theme.getCurrent() is the only way an extension can see them. With a theme
+ * installed it returns that theme's `colors`; with the default theme it
+ * returns the default theme's own, which is what "the system default" means
+ * here. A `colors` object that is empty or absent means the browser has told us
+ * nothing, and the content script falls back to the page's own background.
+ */
+async function themePalette() {
+  let colors = {};
+  try {
+    const theme = await browser.theme.getCurrent();
+    colors = theme?.colors || {};
+  } catch {
+    // No theme API in this context, or a Firefox too old to have one.
+    colors = {};
+  }
+  return {
+    base: firstColour(colors, THEME_BASE_KEYS),
+    text: firstColour(colors, THEME_TEXT_KEYS),
+    // Firefox themes can set an accent outright; toolbar_field_focus is the
+    // nearest thing every theme sets that reads as "the colour this browser
+    // is built around".
+    accent: firstColour(colors, ["accent", "toolbar_field_focus"]),
+    named: Object.keys(colors).length > 0,
+  };
 }
 
 /**
@@ -170,6 +229,26 @@ browser.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.settings) broadcastChange();
 });
 
+/**
+ * A theme change is a colour change, and the minimap's default follows the
+ * theme. Sent on its own rather than as a settings change, because nothing the
+ * user stored has moved: the tabs only need to re-derive and repaint, not tear
+ * the rail down and rebuild it.
+ */
+browser.theme.onUpdated.addListener(async () => {
+  const palette = await themePalette();
+  const tabs = await browser.tabs.query({});
+  await Promise.all(
+    tabs
+      .filter((tab) => tab.id != null)
+      .map((tab) =>
+        browser.tabs
+          .sendMessage(tab.id, { type: "scrollpeak:themeChanged", theme: palette })
+          .catch(() => {}),
+      ),
+  );
+});
+
 browser.tabs.onActivated.addListener(() => refreshAction());
 browser.tabs.onUpdated.addListener((tabId, info, tab) => {
   // Only when the tab actually navigated: onUpdated also fires for every
@@ -190,6 +269,9 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
     case "scrollpeak:getSettings":
       return getSettings();
+
+    case "scrollpeak:getTheme":
+      return themePalette();
 
     case "scrollpeak:setSetting": {
       return getSettings().then(async (settings) => {

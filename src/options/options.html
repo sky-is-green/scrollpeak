@@ -118,10 +118,11 @@
       <section>
         <h2>Appearance</h2>
         <p class="hint">
-          The minimap's marks are the page's own text colours, but the page
-          chose them against the page's background, not against the strip. By
-          default the strip is a darker shade of the page's background and the
-          marks are nudged until they contrast with it.
+          By default the strip is a darker shade of your Firefox theme's
+          background, or the page's if no theme is installed, and the marks are
+          nudged until they contrast with it. The marks are the page's own text
+          colours, because a page chose them against the page, not against our
+          strip.
         </p>
 
         <label class="field field--colour">
@@ -130,6 +131,13 @@
           <button type="button" id="mapBackground-reset">Use the default</button>
         </label>
         <p class="hint" id="mapBackground-hint"></p>
+
+        <label class="field field--colour">
+          <span>Mark colour</span>
+          <input type="color" id="markColour" />
+          <button type="button" id="markColour-reset">Use the page's</button>
+        </label>
+        <p class="hint" id="markColour-hint"></p>
 
         <label class="field field--range">
           <span>Darken the page background by</span>
@@ -217,6 +225,9 @@
         </p>
       </section>
     </main>
+    <!-- The same colour maths the content script runs, so the swatch above is
+         the colour the strip will actually be rather than a guess. -->
+    <script src="../colour.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

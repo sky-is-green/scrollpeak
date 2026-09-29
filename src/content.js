@@ -29,14 +29,22 @@
   }
 
   let teardown = null;
+  // The live rail, for the messages that update it in place rather than
+  // replacing it. Distinct from teardown, which is the function that disposes
+  // of it -- calling .setTheme() on that would be a TypeError.
+  let rail = null;
 
   async function mount() {
     let enabled;
     let settings;
+    let theme;
     try {
-      [enabled, settings] = await Promise.all([
+      [enabled, settings, theme] = await Promise.all([
         browser.runtime.sendMessage({ type: "scrollpeak:isEnabled", url }),
         browser.runtime.sendMessage({ type: "scrollpeak:getSettings" }),
+        // The minimap's default colour follows the browser's own theme, and
+        // only the background can see the theme API.
+        browser.runtime.sendMessage({ type: "scrollpeak:getTheme" }),
       ]);
     } catch (err) {
       // Background worker reloading, or the extension was just updated.
@@ -48,6 +56,7 @@
     if (!enabled || !settings) {
       teardown?.();
       teardown = null;
+      rail = null;
       return;
     }
 
@@ -57,19 +66,22 @@
     if (settings.scrollbarMode === "whenNeeded" && !pageScrolls()) {
       teardown?.();
       teardown = null;
+      rail = null;
       return;
     }
 
     // Replace rather than stack: a settings change re-enters this function.
     teardown?.();
 
-    const ctx = globalThis.ScrollPeekRail.mount(settings);
+    const ctx = globalThis.ScrollPeekRail.mount(settings, theme);
     if (!ctx) return;
+    rail = ctx;
 
     const magnifier = globalThis.ScrollPeekMagnifier.mount(ctx, settings);
     teardown = () => {
       magnifier?.teardown();
       ctx.teardown();
+      rail = null;
     };
   }
 
@@ -79,7 +91,16 @@
   // the page: a reload would discard whatever the user has typed or half-
   // filled in, which is a much worse outcome than a brief teardown.
   browser.runtime.onMessage.addListener((message) => {
-    if (message?.type === "scrollpeak:settingsChanged") mount();
+    if (message?.type === "scrollpeak:settingsChanged") {
+      mount();
+      return;
+    }
+    // A theme change moves the default strip colour. Nothing the user stored
+    // has changed, so this re-derives and repaints in place rather than tearing
+    // the rail down and rebuilding the map.
+    if (message?.type === "scrollpeak:themeChanged") {
+      rail?.setTheme(message.theme);
+    }
   });
 })();
 
