@@ -190,8 +190,35 @@ Deliberately **not** ported:
 - **Map tint or opacity.** The map takes the page's own colours by design; a
   tint setting would fight that.
 
-The web-specific addition is the site exclusion list, which has no analogue in
-an editor.
+### Not in Kate
+
+These are web-specific, with no analogue in an editor:
+
+| Setting | Default | What it does |
+|---|---|---|
+| Minimap only, no track | off | Drops the narrow drag track, so the rail is just the map and takes 14px less. The page's gutter shrinks with it. |
+| Hide until I scroll or approach | off | Parks the rail off the right edge. It returns on scroll, wheel, key press, or when the pointer comes within the trigger distance. |
+| Trigger distance | 48px | How close to the right edge counts as "near". |
+| Stay visible for | 1.6s | How long it stays after a trigger. |
+| Strip colour | follows the page | The minimap's background. |
+| Darken the page background by | 82% | How far to darken, for the default strip colour. |
+| Minimum mark contrast | 3:1 | WCAG ratio the marks must reach against the strip. |
+
+**On the strip colour and contrast.** Kate fills the minimap with the editor
+background and draws the text's own colours into it, so his marks contrast by
+construction. A page's text colours are chosen against the *page*, not against
+our strip, so a dark grey that is perfectly legible in a light article vanishes
+on a dark strip. The default is therefore a darker shade of the page's own
+background — closer to Kate than a fixed grey, and still a background the marks
+can be forced against.
+
+The marks keep their hue and only their lightness moves, so a link stays
+link-coloured. Measured on the fixture, the page's 1035 distinct mark colours
+survive and the strip reaches 3.2:1 by default, 17:1 on a light override.
+
+**On peek.** The rail is transformed off-screen rather than hidden, so it keeps
+its box: the page's padding does not change when it slides away, and the
+preview can still measure it while it is off-screen.
 
 ### Testing the settings
 

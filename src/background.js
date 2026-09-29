@@ -38,6 +38,30 @@ const DEFAULT_SETTINGS = {
   // matters on an arbitrary page, so it stays opt-in.
   showMarkers: false,
 
+  // --- below here: web-specific, no Kate equivalent ---
+
+  // The strip's background. "" derives a darker shade of the page's own
+  // background, which is the closest thing to Kate's behaviour: his minimap
+  // sits on the editor background and the marks are the text's own colours.
+  // A page's text colours are chosen against the page, not against our
+  // strip, so the marks are then forced to contrast with whatever we get.
+  mapBackground: "",
+
+  // How far to darken the page background for the default strip colour.
+  darkenAmount: 0.82,
+
+  // WCAG contrast ratio the marks must reach against the strip. 3 is enough
+  // for a 1px mark carrying shape rather than reading as text.
+  markContrast: 3,
+
+  // "Minimap only": drop the track so the rail is just the map.
+  hideTrack: false,
+
+  // "Peek": park the rail off-screen until the user scrolls or approaches it.
+  hideWhenIdle: false,
+  peekZone: 48,
+  peekDelay: 1600,
+
   // Hosts the rail is hidden on. A parent domain covers its subdomains.
   disabledSites: [],
 };

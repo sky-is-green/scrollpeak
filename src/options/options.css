@@ -246,3 +246,36 @@ output {
 .sites__empty {
   color: var(--muted);
 }
+
+.field--colour {
+  align-items: center;
+  cursor: default;
+}
+
+.field--colour input[type="color"] {
+  width: 40px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+
+.field--colour button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  flex: none;
+}
+
+.field--colour button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

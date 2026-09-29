@@ -58,6 +58,24 @@ async function init() {
     $("state-pill").hidden = e.target.checked;
   });
 
+  bindCheckbox("hideTrack", settings.hideTrack);
+  bindCheckbox("hideWhenIdle", settings.hideWhenIdle);
+
+  // An empty colour means "derive a darker shade of the page's background".
+  // A colour input cannot show empty, so it mirrors the live value and the
+  // Auto button is what clears the override.
+  const bg = $("mapBackground");
+  // Empty means "derive a darker shade of the page's background", which a
+  // colour input cannot show, so it stands in with the same swatch the
+  // options page uses.
+  const DERIVED = "#2a2a33";
+  bg.value = settings.mapBackground || DERIVED;
+  bg.addEventListener("change", () => save({ mapBackground: bg.value }));
+  $("mapBackground-reset").addEventListener("click", () => {
+    save({ mapBackground: "" });
+    bg.value = DERIVED;
+  });
+
   const excluded = (settings.disabledSites || []).length;
   $("site-count").textContent = excluded
     ? `${excluded} site${excluded === 1 ? "" : "s"} excluded`

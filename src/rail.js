@@ -70,6 +70,11 @@
     // never show the viewport in two different places.
     map.setThumbEl(minimap.thumb?.domNode ?? null);
 
+    // Strip background and mark contrast. Also re-applied after every
+    // collect(), because a page's background can change with a theme or a
+    // dark-mode media query and the default is derived from it.
+    map.setAppearance(settings);
+
     let rebuildTimer = null;
 
     /** Kate's updatePixmap(), behind his 300ms single-shot timer. */
@@ -101,6 +106,7 @@
 
     function relayout() {
       const h = strip.clientHeight || window.innerHeight;
+      map.setAppearance(settings);
       if (map.setSize(settings.minimapWidth, h)) rebuild();
     }
 
@@ -134,6 +140,92 @@
     map.collect(content);
     map.buildPixmap();
     repaint();
+
+    // --- rail-level appearance -------------------------------------------
+    //
+    // Both of these are set as classes on <html> and acted on in content.css,
+    // because they change the rail's layout rather than the map's pixels.
+
+    /** "Minimap only": drop the track so the rail is just the map. */
+    function applyTrackVisibility() {
+      document.documentElement.classList.toggle(
+        "scrollpeak-minimap-only", Boolean(settings.hideTrack));
+    }
+
+    /**
+     * "Peek": park the rail off the right edge until the user scrolls or
+     * brings the pointer near it.
+     *
+     * The rail is still in the layout while hidden -- only transformed -- so
+     * the page keeps its padding and nothing reflows when it appears.
+     */
+    let peekTimer = null;
+    function applyPeek() {
+      const on = Boolean(settings.hideWhenIdle);
+      document.documentElement.classList.toggle("scrollpeak-peek", on);
+      if (!on) {
+        // classList.toggle(token, undefined) is treated as *no force
+        // argument*, so it toggles rather than removes. Remove explicitly, or
+        // the class list claims the rail is showing when peek is off.
+        clearTimeout(peekTimer);
+        peekTimer = null;
+        document.documentElement.classList.remove("scrollpeak-visible");
+        return;
+      }
+      peek(true);
+    }
+
+    function peek(show) {
+      const root = document.documentElement;
+      const visible = Boolean(show);
+      if (visible) root.classList.add("scrollpeak-visible");
+      else root.classList.remove("scrollpeak-visible");
+      clearTimeout(peekTimer);
+      peekTimer = null;
+      if (show) {
+        peekTimer = setTimeout(() => {
+          peekTimer = null;
+          // Do not slide away while the pointer is still on the rail.
+          if (!rail.rail.domNode.matches(":hover")) {
+            root.classList.remove("scrollpeak-visible");
+          }
+        }, settings.peekDelay ?? 1600);
+      }
+    }
+
+    function onPeekTrigger(event) {
+      if (!settings.hideWhenIdle) return;
+      if (peekTimer !== null) {
+        peek(true);
+        return;
+      }
+      if (event && event.type === "pointermove") {
+        // Only when the pointer is near the right edge, which is what "within
+        // range of the minimap" means.
+        const edge = settings.peekZone ?? 48;
+        if (event.clientX < window.innerWidth - edge) return;
+      }
+      peek(true);
+    }
+
+    applyTrackVisibility();
+    applyPeek();
+
+    // vugluscr reserves container padding equal to the rail's width, which
+    // still counts the track after it has been hidden. Re-measure and correct
+    // it, otherwise the page keeps a gutter where the track used to be.
+    function syncRailPadding() {
+      if (!settings.hideTrack) return;
+      const width = rail.rail.domNode.getBoundingClientRect().width;
+      if (width > 0) content.style.paddingRight = `${Math.round(width)}px`;
+    }
+    syncRailPadding();
+    rail.onLayout(syncRailPadding);
+    new ResizeObserver(syncRailPadding).observe(rail.rail.domNode);
+    window.addEventListener("scroll", onPeekTrigger, { passive: true });
+    window.addEventListener("pointermove", onPeekTrigger, { passive: true });
+    window.addEventListener("wheel", onPeekTrigger, { passive: true });
+    window.addEventListener("keydown", onPeekTrigger, { passive: true });
 
     const ctx = {
       rail,
@@ -172,8 +264,15 @@
 
       teardown() {
         clearTimeout(rebuildTimer);
+        clearTimeout(peekTimer);
         observer.disconnect();
         mutations.disconnect();
+        window.removeEventListener("scroll", onPeekTrigger);
+        window.removeEventListener("pointermove", onPeekTrigger);
+        window.removeEventListener("wheel", onPeekTrigger);
+        window.removeEventListener("keydown", onPeekTrigger);
+        document.documentElement.classList.remove(
+          "scrollpeak-minimap-only", "scrollpeak-peek", "scrollpeak-visible");
         window.removeEventListener("scroll", repaint);
         window.removeEventListener("resize", relayout);
         try {

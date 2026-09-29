@@ -69,6 +69,14 @@
       /** Painted graphics, for the preview. @type {Array<object>} */
       this.boxes = [];
       this.docHeight = 1;
+      /**
+       * The strip's background, and how much darker than the page it should
+       * be. See resolveColours().
+       */
+      this.mapBackground = "#ffffff";
+      this.markContrast = 3;
+      /** Per-collect memo of original mark colour -> adjusted. */
+      this.markColours = new Map();
       this.charIncrement = 1;
       this.lineIncrement = 1;
       this.background = "#ffffff";
@@ -205,6 +213,7 @@
       this.docHeight = maxY;
       this.background =
         getComputedStyle(document.body).backgroundColor || "#ffffff";
+      this.resolveColours();
 
       this.revision++;
       return lines;
@@ -261,6 +270,48 @@
       return found;
     }
 
+
+    /**
+     * Settings that affect how the strip is coloured.
+     *
+     * `mapBackground` is a CSS colour, or "" for the default. The default is a
+     * darker shade of the page's own background, so the strip reads as part
+     * of the site rather than as a foreign grey bar -- but darker, because
+     * Kate's minimap sits on the editor's background and the marks are the
+     * text's own colours, and a page's text colours are chosen against the
+     * page, not against our strip.
+     *
+     * Which is why the marks are then forced to contrast. A dark grey that is
+     * perfectly legible in a light article vanishes against a dark strip.
+     */
+    setAppearance({ mapBackground, markContrast, darkenAmount }) {
+      this._mapBackgroundPref = mapBackground || "";
+      this.markContrast = Number(markContrast) || 3;
+      this._darkenAmount = darkenAmount == null ? 0.82 : Number(darkenAmount);
+      this.resolveColours();
+    }
+
+    resolveColours() {
+      const pageRgb = parseRgb(this.background) || [255, 255, 255];
+      const chosen = parseRgb(this._mapBackgroundPref);
+      this.mapBackground = chosen
+        ? `rgb(${chosen.join(",")})`
+        : `rgb(${darken(pageRgb, this._darkenAmount).join(",")})`;
+
+      const bg = chosen || darken(pageRgb, this._darkenAmount);
+      this._mapBackgroundRgb = bg;
+      this.markColours.clear();
+      for (const line of this.lines) {
+        if (this.markColours.has(line.color)) continue;
+        const rgb = parseRgb(line.color);
+        if (!rgb) continue;
+        const fixed = ensureContrast(rgb, bg, this.markContrast);
+        this.markColours.set(
+          line.color,
+          `rgb(${fixed.join(",")})`,
+        );
+      }
+    }
 
     /** Left edge of the main content column, robustly. */
     contentLeftOf() {
@@ -399,7 +450,7 @@
           } else {
             // Kate batches the points of a colour range into one drawPoints
             // call. We have one colour per line box, so this is a plain fill.
-            ctx.fillStyle = line.color;
+            ctx.fillStyle = this.markColours.get(line.color) || line.color;
             ctx.fillRect(pixelX++, pixelY, 1, 1);
           }
         }
@@ -486,9 +537,11 @@
         });
       }
 
-      // The page background, so a short document does not show the strip's
-      // own colour underneath. Kate: painter.drawRect(grooveRect).
-      ctx.fillStyle = this.background;
+      // The strip's own background, a darker shade of the page's by default.
+      // Kate fills with the editor background, which is the right idea: the
+      // marks are text colours, so they need a background their text was
+      // chosen against, and a page's is the one its own text was chosen for.
+      ctx.fillStyle = this.mapBackground;
       ctx.fillRect(0, 0, this.width, grooveHeight);
 
       // Stretch the pixmap over the whole groove.
@@ -502,7 +555,7 @@
       }
 
       // Fade what is not currently visible. Kate: backgroundColor at alpha 110.
-      const fade = withAlpha(this.background, 110);
+      const fade = withAlpha(this.mapBackground, 110);
       ctx.fillStyle = fade;
       if (band.top > 0) ctx.fillRect(0, 0, this.width, band.top);
       if (band.top + band.height < grooveHeight) {
@@ -511,7 +564,7 @@
       }
 
       // Kate's thin line limiting the scrollbar.
-      ctx.fillStyle = withAlpha(this.foregroundColor(), 10);
+      ctx.fillStyle = withAlpha(this.mapBackground, 255);
       ctx.fillRect(0, 0, 1, grooveHeight);
 
       // Kate also draws a delimiter at the bottom of the map, which only has
@@ -538,10 +591,6 @@
       const top = (scrollTop / max) * docHeight;
       const height = (viewportHeight / this.docHeight) * docHeight;
       return { top: docTop + top, height: Math.max(1, height) };
-    }
-
-    foregroundColor() {
-      return getComputedStyle(document.body).color || "#000000";
     }
 
     /**
@@ -594,6 +643,70 @@
       }
       return Math.max(0, lo - 1);
     }
+  }
+
+  /**
+   * Relative luminance, per WCAG.
+   *
+   * Used to decide whether a mark is legible against the map's background. The
+   * minimap's marks are the page's own text colours, which are chosen to be
+   * legible against the page's background -- not against the strip's. On a
+   * light page the strip is darker than the page, so a dark grey mark that
+   * reads perfectly well in the article disappears in the map.
+   */
+  function luminance(rgb) {
+    const [r, g, b] = rgb.map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  /** WCAG contrast ratio, 1 to 21. */
+  function contrast(a, b) {
+    const la = luminance(a);
+    const lb = luminance(b);
+    const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  /** Parse a computed colour to [r,g,b], or null if it is not a plain colour. */
+  function parseRgb(color) {
+    const m = /^rgba?\(([^)]+)\)$/.exec((color || "").trim());
+    if (!m) return null;
+    const parts = m[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+    if (parts.length < 3 || parts.slice(0, 3).some(Number.isNaN)) return null;
+    return parts.slice(0, 3);
+  }
+
+  /** Mix towards black by `amount`, which is what the default background is. */
+  function darken(rgb, amount) {
+    return rgb.map((v) => Math.round(v * (1 - amount)));
+  }
+
+  /**
+   * Nudge a colour along the lightness axis until it contrasts with `bg`.
+   *
+   * Moving towards whichever of black or white is further from the background
+   * keeps the hue, so a link stays link-coloured and a heading stays
+   * heading-coloured -- only its lightness changes. Returns the input
+   * unchanged if the target cannot be met, which happens for mid-greys
+   * against a mid-grey background.
+   */
+  function ensureContrast(rgb, bg, target) {
+    if (contrast(rgb, bg) >= target) return rgb;
+    const bgL = luminance(bg);
+    const towardsWhite = bgL < 0.5;
+    let best = rgb;
+    for (let step = 0; step <= 20; step++) {
+      const t = towardsWhite ? step / 20 : 1 - step / 20;
+      const candidate = towardsWhite
+        ? rgb.map((v, i) => Math.round(v + (255 - v) * t))
+        : rgb.map((v) => Math.round(v * (1 - t)));
+      if (contrast(candidate, bg) >= target) return candidate;
+      best = candidate;
+    }
+    return best;
   }
 
   /**

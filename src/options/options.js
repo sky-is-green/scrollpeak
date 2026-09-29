@@ -5,12 +5,16 @@
 
 const $ = (id) => document.getElementById(id);
 
-const CHECKBOXES = ["enabled", "showMagnifier", "showMarkers"];
-const RANGES = ["minimapWidth"];
+const CHECKBOXES = ["enabled", "showMagnifier", "showMarkers", "hideTrack", "hideWhenIdle"];
+const RANGES = ["minimapWidth", "darkenAmount", "markContrast", "peekZone", "peekDelay"];
 const MODES = ["always", "whenNeeded", "never"];
 
 function formatRange(id, value) {
-  return id === "minimapWidth" ? `${value}px` : String(value);
+  if (id === "minimapWidth" || id === "peekZone") return `${value}px`;
+  if (id === "peekDelay") return `${(value / 1000).toFixed(1)}s`;
+  if (id === "markContrast") return `${value}:1`;
+  if (id === "darkenAmount") return `${Math.round(value * 100)}%`;
+  return String(value);
 }
 
 async function load() {
@@ -43,6 +47,7 @@ async function load() {
     });
   }
 
+  wireColour(settings);
   wireSiteForm();
   wireLinks();
   renderSites(settings.disabledSites || []);
@@ -54,6 +59,50 @@ async function load() {
  * Normalised on the way in: users paste URLs, and "https://Example.com/path"
  * and "example.com" should not become two different entries.
  */
+/**
+ * The strip colour.
+ *
+ * An empty setting means "derive a darker shade of the page's background",
+ * which a colour input cannot represent. So the swatch shows the derived
+ * value and is marked as following the page, and the button is what clears an
+ * override.
+ */
+function wireColour(settings) {
+  const input = $("mapBackground");
+  const reset = $("mapBackground-reset");
+  const hint = $("mapBackground-hint");
+
+  // The derived colour is a darkened page background, which the options page
+  // cannot know -- it is not looking at a page. Show the value that is in
+  // force, and say which of the two it is.
+  let following = !settings.mapBackground;
+  input.value = settings.mapBackground || DERIVED_PLACEHOLDER;
+
+  const describe = () => {
+    hint.textContent = following
+      ? "Following the page: a darker shade of its own background."
+      : `Using ${settings.mapBackground}.`;
+  };
+  describe();
+
+  input.addEventListener("change", async () => {
+    const next = await persist({ mapBackground: input.value });
+    following = !next.mapBackground;
+    describe();
+  });
+
+  reset.addEventListener("click", async () => {
+    const next = await persist({ mapBackground: "" });
+    settings.mapBackground = next.mapBackground;
+    following = !next.mapBackground;
+    input.value = settings.mapBackground || DERIVED_PLACEHOLDER;
+    describe();
+  });
+}
+
+/** Swatch shown while the colour is being derived. Matches the default darken. */
+const DERIVED_PLACEHOLDER = "#2a2a33";
+
 function wireSiteForm() {
   const form = $("addsite");
   const input = $("site-input");
