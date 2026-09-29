@@ -9,6 +9,7 @@ import functools
 import http.server
 import json
 import os
+import shutil
 import socket
 import socketserver
 import subprocess
@@ -22,6 +23,12 @@ FIXTURES = os.path.join(HERE, "fixtures")
 REPO = os.path.dirname(HERE)
 ARTICLE = "/article.html"   # ~2200px, scrolls
 SHORT = "/short.html"       # fits on one screen
+
+# Throwaway profiles, by process id, so stop_firefox() can remove them. A
+# profile is ~100MB and /tmp here is a 16GB tmpfs; a full suite used to leak
+# several gigabytes, and when /tmp filled the later tests failed to start at
+# all with empty output rather than a useful error.
+_PROFILES = {}
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -129,10 +136,12 @@ def launch_firefox(extension=None, url="about:blank", extra_prefs=""):
          "--no-remote", url],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         env=dict(os.environ, MOZ_HEADLESS="1"))
+    _PROFILES[proc.pid] = profile
 
     sock = None
     for _ in range(60):
         if proc.poll() is not None:
+            discard_profile(proc)
             raise RuntimeError("Firefox exited during startup")
         try:
             sock = socket.create_connection(("127.0.0.1", port), timeout=3)
@@ -141,6 +150,7 @@ def launch_firefox(extension=None, url="about:blank", extra_prefs=""):
             time.sleep(1)
     if sock is None:
         proc.terminate()
+        discard_profile(proc)
         raise RuntimeError("could not reach Marionette")
 
     m = Marionette(sock)
@@ -151,8 +161,20 @@ def launch_firefox(extension=None, url="about:blank", extra_prefs=""):
     return proc, m
 
 
+def discard_profile(proc):
+    """Remove the throwaway profile launch_firefox() made for this process.
+
+    A profile is ~100MB and /tmp here is a 16GB tmpfs; a full suite used to
+    leak several gigabytes. When /tmp filled, the later suites failed to start
+    with empty output rather than an error worth reading.
+    """
+    profile = _PROFILES.pop(proc.pid, None)
+    if profile:
+        shutil.rmtree(profile, ignore_errors=True)
+
+
 def stop_firefox(proc):
-    """Terminate Firefox and return whatever it wrote to stderr.
+    """Terminate Firefox, remove its profile and return its stderr.
 
     Order matters: reading stderr before the process exits blocks forever,
     because the pipe stays open until every writer has gone.
@@ -167,8 +189,11 @@ def stop_firefox(proc):
         except Exception:
             pass
     if proc.stderr is None:
+        discard_profile(proc)
         return ""
     try:
-        return proc.stderr.read().decode("utf-8", "replace")
+        text = proc.stderr.read().decode("utf-8", "replace")
     except Exception:
-        return ""
+        text = ""
+    discard_profile(proc)
+    return text

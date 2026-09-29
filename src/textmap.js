@@ -72,12 +72,60 @@
   // the raster), Wikipedia 0.44, a single-column article 0.03.
   const BLOCK_SPREAD_FRACTION = 0.75;
 
+  // How many lines either side of the hovered offset the preview looks at
+  // when it picks the column to centre. Wide on purpose: narrow enough and
+  // the window sits inside one tall table, and the preview centres on the
+  // table rather than on the column it is part of.
+  const SPAN_WINDOW_LINES = 40;
+
   // What becomes a block: the boxes a person navigates by. Links and images
   // are drawn as themselves; everything else is a text area.
   const BLOCK_SELECTOR = [
     "p", "li", "dt", "dd", "h1", "h2", "h3", "h4", "h5", "h6",
     "blockquote", "pre", "figcaption", "caption", "td", "th",
     "summary", "button", "label", "a[href]", "img",
+  ].join(", ");
+
+  // -------------------------------------------------------------- the media
+  //
+  // A media page is navigated by its pictures, not by its text, and the two
+  // renderers above cannot see that: the raster spreads a badge's label and a
+  // title across the strip as unrelated fragments, and the block vocabulary
+  // never sees the video or the card containers at all. So media pages get a
+  // third renderer whose vocabulary is replaced elements by geometry rather
+  // than by tag name: the player, the cards, the embeds. The text renderers
+  // are untouched; this one only runs on pages that pass #wantsMedia().
+  //
+  // Thresholds measured across real pages (chars/px = body text length over
+  // document height):
+  //
+  //   page              video      images >= 200x100   image area   text
+  //   YouTube watch     797x598    26                  0.20         1.12
+  //   Reddit front      -          38                  0.56         1.27
+  //   BBC news front    -          43                  0.33         1.67
+  //   Wikipedia        250x141     9                   0.014        2.35
+  //   GitHub repo      -           1                   0.02         2.03
+  //   Hacker News      -           0                   0.032        3.07
+  //
+  // Wikipedia's 250x141 infobox video is the case the video floor exists for.
+  const MEDIA_VIDEO_MIN_W = 300;
+  const MEDIA_VIDEO_MIN_H = 150;
+  const MEDIA_IMAGE_MIN_W = 200;
+  const MEDIA_IMAGE_MIN_H = 100;
+  const MEDIA_IMAGE_COUNT = 12;
+  const MEDIA_IMAGE_AREA_FRACTION = 0.2;
+  // What the media renderer actually draws. Below this are icons, avatars and
+  // tracking pixels; drawing them turns the map into a confetti field.
+  const MEDIA_BOX_MIN_W = 48;
+  const MEDIA_BOX_MIN_H = 32;
+
+  // What the media renderer adds to the text vocabulary. The block selector
+  // is not extended; this is the same idea applied separately, and it leaves
+  // out exactly the parts the media boxes already stand for: links and
+  // buttons are the cards' labels, and `img` is drawn as a box, not as text.
+  const MEDIA_TEXT_SELECTOR = [
+    "p", "li", "dt", "dd", "h4", "h5", "h6", "blockquote", "pre",
+    "figcaption", "caption", "td", "th", "summary",
   ].join(", ");
 
   const SKIP_TAGS = new Set([
@@ -130,6 +178,21 @@
       this.blockMode = false;
       this.blockLeft = 0;
       this.blockRight = 0;
+      /**
+       * Replaced elements and headings, collected instead of both text
+       * renderers on a page whose structure is pictures. See #wantsMedia().
+       */
+      this.media = [];
+      /**
+       * Paragraphs and captions on a media page, drawn under the media boxes.
+       * Links and buttons are left out: on a card the media box *is* the
+       * link, and drawing the title again beside it is the noise, not the
+       * signal.
+       */
+      this.mediaText = [];
+      this.mediaMode = false;
+      this.mediaLeft = 0;
+      this.mediaRight = 0;
       // vugluscr's viewport thumb, read for the fade. Deriving the band from
       // the thumb itself rather than recomputing its geometry means the two
       // can never disagree.
@@ -212,6 +275,10 @@
             y: rects[i].top + scrollY,
             height: rects[i].height,
             x: rects[i].left + scrollX,
+            // The right edge is what makes the preview able to centre a
+            // column: text alone cannot tell a 300px sidebar from a 900px
+            // article until the box is measured.
+            right: rects[i].right + scrollX,
             text: style.preserve ? raw : renderedText(raw),
             color: style.color,
             family: style.family,
@@ -268,16 +335,37 @@
       this.background = this.pageBackground();
       this.resolveColours();
 
-      // Which renderer this revision gets is decided by the zoom, not by the
-      // page: a handful of line boxes stretched over a tall groove is not
-      // text any more, and blocks read better there. See #wantsBlocks().
-      this.blockMode = this.#wantsBlocks();
-      if (this.blockMode) {
-        this.#collectBlocks(root, scrollX, scrollY, maxY);
-        // A page with nothing block-shaped (rare) reads better as text.
-        this.blockMode = this.blocks.length > 0;
-      } else {
+      // Which renderer this revision gets. Media first: a page whose
+      // structure is pictures is media whether or not its text is spread
+      // wide, and the spread rule would otherwise send it to the block
+      // renderer, whose model does not contain the player or the cards. Then
+      // zoom, which chooses between the raster and the blocks for text
+      // pages. See #wantsMedia() and #wantsBlocks().
+      this.#collectMedia(root, scrollX, scrollY, maxY);
+      this.mediaMode = this.#wantsMedia() && this.media.length > 0;
+
+      if (this.mediaMode) {
+        const text = this.#collectBlocks(
+          root, scrollX, scrollY, maxY, MEDIA_TEXT_SELECTOR);
+        this.mediaText = text.blocks;
         this.blocks = [];
+        this.blockMode = false;
+        this.#mediaSpan();
+      } else {
+        this.media = [];
+        this.mediaText = [];
+        this.blockMode = this.#wantsBlocks();
+        if (this.blockMode) {
+          const blocks = this.#collectBlocks(
+            root, scrollX, scrollY, maxY, BLOCK_SELECTOR);
+          this.blocks = blocks.blocks;
+          this.blockLeft = blocks.left;
+          this.blockRight = blocks.right;
+          // A page with nothing block-shaped (rare) reads better as text.
+          this.blockMode = this.blocks.length > 0;
+        } else {
+          this.blocks = [];
+        }
       }
 
       this.revision++;
@@ -328,9 +416,9 @@
      * that wraps is two blue bars instead of a rectangle covering the text
      * between them. Images are atomic. Everything else is a text area.
      */
-    #collectBlocks(root, scrollX, scrollY, maxY) {
+    #collectBlocks(root, scrollX, scrollY, maxY, selector) {
       const blocks = [];
-      for (const el of root.querySelectorAll(BLOCK_SELECTOR)) {
+      for (const el of root.querySelectorAll(selector)) {
         if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) {
           continue;
         }
@@ -368,15 +456,159 @@
       const order = { text: 0, link: 1, image: 2 };
       blocks.sort((a, b) => order[a.kind] - order[b.kind]);
 
-      this.blocks = blocks;
       let left = Infinity;
       let right = -Infinity;
       for (const b of blocks) {
         if (b.x < left) left = b.x;
         if (b.x + b.w > right) right = b.x + b.w;
       }
-      this.blockLeft = blocks.length ? left : 0;
-      this.blockRight = blocks.length ? right : 1;
+      return {
+        blocks,
+        left: blocks.length ? left : 0,
+        right: blocks.length ? right : 1,
+      };
+    }
+
+    /**
+     * Collect what the media renderer draws.
+     *
+     * Unlike #collectBlocks(), the vocabulary is geometry, not tags: anything
+     * the browser actually renders as a picture -- <video>, <img>, <canvas>,
+     * <iframe> -- above a floor size. That is the point of a separate media
+     * path. YouTube's player is a <video> the block selector never had; its
+     * cards are divs no selector would find; and the titles and badges the
+     * block map did catch are the noise there, not the structure.
+     *
+     * Headings come along for orientation. The rest of the text does not:
+     * body text on a media page is labels and captions, and the preview is
+     * one hover away when it is actually wanted.
+     */
+    #collectMedia(root, scrollX, scrollY, maxY) {
+      const found = [];
+      for (const el of root.querySelectorAll("video, img, canvas, iframe")) {
+        if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < MEDIA_BOX_MIN_W || r.height < MEDIA_BOX_MIN_H) continue;
+        const cs = getComputedStyle(el);
+        if (
+          cs.display === "none" ||
+          cs.visibility === "hidden" || cs.visibility === "collapse" ||
+          this.#isStuck(el)
+        ) {
+          continue;
+        }
+        const y = r.top + scrollY;
+        if (y + r.height < 0 || y > maxY) continue;
+        found.push({
+          x: r.left + scrollX,
+          y,
+          w: r.width,
+          h: r.height,
+          kind: el.tagName === "VIDEO" ? "video" : "media",
+        });
+      }
+
+      // One box per picture. A <video> and its <canvas> overlay cover the
+      // same rect, and a site can nest an <img> under the same placeholder as
+      // an <iframe>. The selector order already ranks them usefully, so keep
+      // the first of a set and drop the rest.
+      const media = [];
+      for (const m of found) {
+        // A gallery can hold thousands of pictures; the map cannot show them
+        // and the strip is 60px wide. The first few hundred are the page.
+        if (media.length >= 600) break;
+        let dup = false;
+        for (const k of media) {
+          if (Math.abs(k.x - m.x) < 3 && Math.abs(k.y - m.y) < 3 &&
+              Math.abs(k.w - m.w) < 4 && Math.abs(k.h - m.h) < 4) {
+            dup = true;
+            break;
+          }
+        }
+        if (!dup) media.push(m);
+      }
+
+      // The page's own wayfinding marks, so a media map can say where the
+      // title is rather than only where the pictures are.
+      for (const el of root.querySelectorAll("h1, h2, h3")) {
+        if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 6) continue;
+        const cs = getComputedStyle(el);
+        if (
+          cs.display === "none" ||
+          cs.visibility === "hidden" || cs.visibility === "collapse" ||
+          this.#isStuck(el)
+        ) {
+          continue;
+        }
+        const y = r.top + scrollY;
+        if (y + r.height < 0 || y > maxY) continue;
+        media.push({
+          x: r.left + scrollX,
+          y,
+          w: r.width,
+          h: r.height,
+          kind: "heading",
+        });
+      }
+
+      this.media = media;
+    }
+
+    /**
+     * The horizontal extent the media renderer maps onto the strip.
+     *
+     * Taken over the text it draws as well as the boxes, so a wide paragraph
+     * cannot overflow the map's x projection, and set after both
+     * collections.
+     */
+    #mediaSpan() {
+      let left = Infinity;
+      let right = -Infinity;
+      for (const m of this.media) {
+        if (m.x < left) left = m.x;
+        if (m.x + m.w > right) right = m.x + m.w;
+      }
+      for (const b of this.mediaText) {
+        if (b.x < left) left = b.x;
+        if (b.x + b.w > right) right = b.x + b.w;
+      }
+      const any = this.media.length || this.mediaText.length;
+      this.mediaLeft = any ? left : 0;
+      this.mediaRight = any ? right : 1;
+    }
+
+    /**
+     * Is this page one whose structure is pictures?
+     *
+     * A big video is decisive: on a watch page the video *is* the content.
+     * Otherwise a field of large pictures -- many of them, covering a real
+     * share of the document. Both parts of the picture test matter: BBC's
+     * front page and Reddit's are card grids (43 and 38 large pictures,
+     * 33% and 56% of the document), while Wikipedia has 9 and GitHub 1,
+     * percentages in the low hundredths.
+     *
+     * The video floor is measured too: Wikipedia's infobox holds a 250x141
+     * video, which is a thumbnail, not a player.
+     */
+    #wantsMedia() {
+      let bigCount = 0;
+      let bigArea = 0;
+      for (const m of this.media) {
+        if (m.kind === "video") {
+          if (m.w >= MEDIA_VIDEO_MIN_W && m.h >= MEDIA_VIDEO_MIN_H) return true;
+        } else if (m.kind === "media") {
+          if (m.w >= MEDIA_IMAGE_MIN_W && m.h >= MEDIA_IMAGE_MIN_H) {
+            bigCount++;
+            bigArea += m.w * m.h;
+          }
+        }
+      }
+      if (bigCount < MEDIA_IMAGE_COUNT) return false;
+      const docArea = this.docHeight *
+        (document.documentElement.clientWidth || window.innerWidth);
+      return bigArea > docArea * MEDIA_IMAGE_AREA_FRACTION;
     }
 
     /**
@@ -534,10 +766,21 @@
         bg,
         this.markContrast,
       );
+      // The accent has to contrast with the strip too: the media renderer
+      // fills the video's box with it, and a themed accent can be the strip's
+      // own colour (a grey theme's accent on a grey strip), which would make
+      // the player disappear.
+      const accent = ensureContrast(
+        resolveColor(this.theme?.accent) || [59, 110, 165],
+        bg,
+        this.markContrast,
+      );
       this.palette = {
         background: this.mapBackground,
         ink: `rgb(${ink.join(",")})`,
-        accent: resolveColor(this.theme?.accent) || null,
+        inkRgb: ink,
+        accent: `rgb(${accent.join(",")})`,
+        accentRgb: accent,
         source: this.paletteSource,
       };
     }
@@ -548,33 +791,57 @@
     }
 
     /**
-     * Left edge of the content *near a document offset*.
+     * The horizontal span of the content *the preview window will show*.
      *
      * A single contentLeft is right for a text document, where every line
      * starts at the same x, and for a page with one column. It is wrong for a
-     * page with two: YouTube's recommendations sit at x ~ 1200 while the
-     * article column is at x ~ 0, and a preview pinned to the global left
-     * edge shows the empty article column however far down the map the marks
-     * came from -- the user hovers a recommendation in the map and gets a
-     * blank window.
+     * page with two, and for a page with a float: the lead beside Wikipedia's
+     * infobox is wrapped to a narrow column, and anchoring the window's left
+     * edge there clipped the infobox off the right and left a quarter of the
+     * window blank on the left.
      *
-     * The anchor is the longest line in a small window around the hovered
-     * offset, not the leftmost: a page is full of one-character fragments
-     * (clipped carousels, timestamps, badges) that would drag the window to
-     * the far left, while the line with the most text is the content the eye
-     * is on.
+     * The span is the union of the line boxes that overlap the window
+     * vertically, so the preview centres everything it is about to show. The
+     * 2nd and 98th percentiles drop a stray fragment -- absolutely positioned
+     * badges and the like -- without dropping a real second column or a
+     * float. The vertical band is the one paint() maps to the stage, and the
+     * fallback window covers a blank run or a page shorter than the window.
      */
-    contentLeftNear(docY) {
-      if (!this.lines.length) return this.contentLeft;
-      const at = this.indexAtY(docY);
-      const lo = Math.max(0, at - 12);
-      const hi = Math.min(this.lines.length, at + 13);
-      let best = null;
-      for (let i = lo; i < hi; i++) {
-        const line = this.lines[i];
-        if (!best || line.text.length > best.text.length) best = line;
+    contentSpanNear(docY, top, height) {
+      const lines = this.lines;
+      if (!lines.length) {
+        return { left: this.contentLeft, right: this.contentLeft + 1 };
       }
-      return best ? best.x : this.contentLeft;
+      const bandTop = top == null ? docY : top;
+      const bandBottom = bandTop + (height == null ? 0 : height);
+
+      // Lines that overlap the window vertically. indexAtY gives the last
+      // line starting at or above bandTop; walk back while earlier boxes
+      // still extend into the band.
+      let start = this.indexAtY(bandTop);
+      while (start > 0 && lines[start - 1].y + lines[start - 1].height > bandTop) {
+        start--;
+      }
+      let end = start;
+      while (end < lines.length && lines[end].y < bandBottom) end++;
+
+      if (end - start < 4) {
+        const at = this.indexAtY(docY);
+        start = Math.max(0, at - SPAN_WINDOW_LINES);
+        end = Math.min(lines.length, at + SPAN_WINDOW_LINES + 1);
+      }
+
+      const lefts = [];
+      const rights = [];
+      for (let i = start; i < end; i++) {
+        lefts.push(lines[i].x);
+        rights.push(lines[i].right ?? lines[i].x);
+      }
+      lefts.sort((a, b) => a - b);
+      rights.sort((a, b) => a - b);
+      const pick = (sorted, q) =>
+        sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+      return { left: pick(lefts, 0.02), right: pick(rights, 0.98) };
     }
 
     /** Cheap upper bound on line count, to pick simple mode before collecting. */
@@ -807,11 +1074,16 @@
         this.canvas.dataset.palette = palette;
       }
 
-      // Which renderer drew this map, and for blocks, what it had to work
-      // with. Published for the block test and the site probe.
+      // Which renderer drew this map, and for blocks and media, what it had
+      // to work with. Published for the tests and the site probe.
       let modeKey = "text";
       let counts = null;
-      if (this.blockMode) {
+      if (this.mediaMode) {
+        counts = { video: 0, media: 0, heading: 0, text: this.mediaText.length };
+        for (const m of this.media) counts[m.kind]++;
+        modeKey = `media:${JSON.stringify(counts)}:` +
+          `${Math.round(this.mediaLeft)}:${Math.round(this.mediaRight)}`;
+      } else if (this.blockMode) {
         counts = { text: 0, link: 0, image: 0 };
         for (const b of this.blocks) counts[b.kind]++;
         modeKey = `blocks:${JSON.stringify(counts)}:` +
@@ -819,16 +1091,24 @@
       }
       if (modeKey !== this._modeKey) {
         this._modeKey = modeKey;
-        this.canvas.dataset.mode = this.blockMode ? "blocks" : "text";
+        this.canvas.dataset.mode = this.mediaMode ? "media"
+          : this.blockMode ? "blocks" : "text";
         if (counts) {
-          this.canvas.dataset.blocks = JSON.stringify(counts);
-          this.canvas.dataset.blockSpan = JSON.stringify({
-            left: Math.round(this.blockLeft),
-            right: Math.round(this.blockRight),
+          const datasetName = this.mediaMode ? "media" : "blocks";
+          const spanName = this.mediaMode ? "mediaSpan" : "blockSpan";
+          this.canvas.dataset[datasetName] = JSON.stringify(counts);
+          this.canvas.dataset[spanName] = JSON.stringify({
+            left: Math.round(this.mediaMode ? this.mediaLeft : this.blockLeft),
+            right: Math.round(this.mediaMode ? this.mediaRight : this.blockRight),
           });
+          const other = this.mediaMode ? "blocks" : "media";
+          const otherSpan = this.mediaMode ? "blockSpan" : "mediaSpan";
+          delete this.canvas.dataset[other];
+          delete this.canvas.dataset[otherSpan];
         } else {
-          delete this.canvas.dataset.blocks;
-          delete this.canvas.dataset.blockSpan;
+          for (const name of ["blocks", "blockSpan", "media", "mediaSpan"]) {
+            delete this.canvas.dataset[name];
+          }
         }
       }
 
@@ -857,9 +1137,12 @@
       ctx.fillStyle = this.mapBackground;
       ctx.fillRect(0, 0, this.width, grooveHeight);
 
-      // Stretch the pixmap over the whole groove, or, when the map is too
-      // zoomed for the raster to read as text, draw the semantic blocks.
-      if (this.blockMode) {
+      // Stretch the pixmap over the whole groove; or, when the text would not
+      // read at this zoom, draw the semantic blocks; or, on a page whose
+      // structure is pictures, draw the media skeleton.
+      if (this.mediaMode) {
+        this.#paintMedia(docTop, docHeight);
+      } else if (this.blockMode) {
         this.#paintBlocks(docTop, docHeight);
       } else {
         const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
@@ -933,6 +1216,69 @@
         } else {
           ctx.fillStyle = ink;
           ctx.fillRect(x, y, w, h);
+        }
+      }
+    }
+
+    /**
+     * The media renderer: the picture boxes, the text under them, and the
+     * headings that orient both.
+     *
+     * A video is the page's subject, so it is drawn as a filled accent block
+     * -- the one mark that should be findable at a glance. Every other piece
+     * of media is a hollow outline, the same convention the block renderer
+     * uses for images: it reads as a picture rather than as text, and an
+     * outline can sit over the strip without hiding anything under it.
+     * Paragraphs and captions are ink bars under the boxes; headings are the
+     * same bars, collected with the media. Links and buttons are not drawn:
+     * on a card the box is the link, and its title would be the box's label
+     * repeated.
+     *
+     * The x span is the media's own extent, like #paintBlocks(), so the map
+     * uses the full strip width instead of a sliver beside a sidebar.
+     */
+    #paintMedia(docTop, docHeight) {
+      const ctx = this.ctx;
+      const span = Math.max(1, this.mediaRight - this.mediaLeft);
+      const stripW = Math.max(1, this.width - 2 * DOC_X_MARGIN);
+      const inkRgb = this.palette.inkRgb;
+      const accentRgb = this.palette.accentRgb;
+      const ink = `rgb(${inkRgb.join(",")})`;
+      const accent = `rgb(${accentRgb.join(",")})`;
+
+      // The text first, under the boxes: the same paint order the block
+      // renderer uses, so a card's box reads as something over the text it
+      // holds, not the other way round.
+      for (const b of this.mediaText) {
+        const x = DOC_X_MARGIN + ((b.x - this.mediaLeft) / span) * stripW;
+        const w = Math.max(1, (b.w / span) * stripW);
+        const y = docTop + (b.y / this.docHeight) * docHeight;
+        const h = Math.max(1, (b.h / this.docHeight) * docHeight);
+        ctx.fillStyle = ink;
+        ctx.fillRect(x, y, w, h);
+      }
+
+      for (const m of this.media) {
+        const x = DOC_X_MARGIN + ((m.x - this.mediaLeft) / span) * stripW;
+        const w = Math.max(1, (m.w / span) * stripW);
+        const y = docTop + (m.y / this.docHeight) * docHeight;
+        const h = Math.max(1, (m.h / this.docHeight) * docHeight);
+
+        if (m.kind === "heading") {
+          ctx.fillStyle = ink;
+          ctx.fillRect(x, y, w, h);
+        } else if (m.kind === "video") {
+          ctx.fillStyle = withAlpha(accentRgb, 110);
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, h - 1));
+        } else {
+          ctx.fillStyle = this.mapBackground;
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = ink;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, h - 1));
         }
       }
     }

@@ -158,7 +158,12 @@ html.vugluscr_embedded {
  * result. transform-origin at 0 0 so the translate is in the clone's own
  * coordinates, and `transform` rather than left/top because changing a
  * transform does not reflow -- which is what makes following the pointer
- * cheap. */
+ * cheap.
+ *
+ * NOTE: this rule does not reach the frame. Content-script CSS is injected as
+ * an agent sheet and is not part of document.styleSheets, so copyStyles()
+ * cannot copy it; magnifier.js sets transform-origin, the background and the
+ * width inline on the wrap. Keep the two in step. */
 .scrollpeak-magnifier__page {
   position: absolute;
   left: 0;

@@ -92,6 +92,21 @@ raster reads as text, nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
+**A page that is mostly pictures gets a map of its pictures.** The block
+vocabulary is still text: on YouTube's watch page the player is a `<video>` the
+selector never had, the recommendation cards are `div`s it never matches, and
+the titles and badges it does match are the noise, not the structure. Media
+pages therefore get a third renderer with a different vocabulary: replaced
+elements by geometry rather than by tag name — `<video>`, `<img>`, `<canvas>`,
+`<iframe>` above a floor size, deduplicated and drawn as boxes, the player
+filled with the accent, everything else outlined, paragraphs and headings as
+bars underneath. Which pages count is measured, not taste: a video at least
+300×150 (Wikipedia's 250×141 infobox thumbnail must not qualify), or at least
+twelve pictures of 200×100 covering a fifth of the document (YouTube watch
+797×598 and 26 big pictures; Reddit 38 and 56%; against Wikipedia 9 and 1.4%,
+GitHub 1 and 2%). The text raster and the block renderer are untouched;
+`test/verify_media.py` checks both the switch and the negative case.
+
 **The preview is not a zoom of the map.** Kate's `KateTextPreview` renders the
 *real text* of the hovered region at 0.75 scale — smaller than the editor's own
 text — in a frameless window half the view's width by a fifth of its height,
@@ -382,6 +397,7 @@ python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
 python3 test/verify_graphics.py       # images, SVG, canvas and backgrounds
 python3 test/verify_preview_lines.py  # the preview reproduces the page's lines
 python3 test/verify_blocks.py         # text raster when long, blocks when zoomed
+python3 test/verify_media.py          # media pages get the media renderer
 python3 test/test_appearance.py       # colour, contrast, minimap-only, peek
 python3 test/test_settings.py         # every setting changes something
 python3 test/probe_sites.py           # live sites; edit SITES at the top
@@ -409,10 +425,10 @@ and that clicking scrolls. Exits non-zero on failure.
 
 **Functionally complete; in release clean-up.** The map, the preview,
 click-to-jump, drag, peek, minimap-only, the settings pages and the
-theme-derived colours all work, and all ten test suites pass. `probe_sites.py`
-additionally drives GitHub, Wikipedia, MDN, Hacker News and a 20,254-node W3C
-spec and reports map scale, painted pixels, renderer, console errors and
-page-layout damage.
+theme-derived colours all work, and all eleven test suites pass. `probe_sites.py`
+additionally drives GitHub, Wikipedia, a YouTube watch page, MDN, Hacker News
+and a 20,254-node W3C spec and reports map scale, painted pixels, renderer,
+console errors and page-layout damage.
 
 The numbers that look like boasts in this README are measurements, checked
 against the page rather than against themselves: the preview reproduces the
@@ -428,9 +444,10 @@ Known limits, in rough priority order:
   images, borders and empty containers carry no marks; that is Kate's model.
   When the text is stretched too far, or spread across columns, it switches to
   the semantic blocks described above, where images are outlines and links are
-  their own colour. A page with heavy grid or flex layout still maps its text
-  where the browser put it, and the preview is unaffected — the preview is the
-  page.
+  their own colour; and a page that is mostly pictures switches again, to the
+  media renderer, where the cards are the map. A page with heavy grid or flex
+  layout still maps its text where the browser put it, and the preview is
+  unaffected — the preview is the page.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
   on the first hover of a page load; it is the one rough edge left in frame

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrollPeak media fixture</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0; padding: 0 0 4rem;
+         color: #1c1c1e; background: #fdfdfc; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 1rem; }
+  h1 { color: #10233f; }
+  h2 { color: #1d4e89; margin-top: 2rem; }
+  /* A player, the thing the media renderer exists for. No source: the box is
+     what the map draws, and a headless fixture should not need a video. */
+  video { display: block; width: 480px; height: 270px; background: #222; }
+  .row { display: flex; gap: 1rem; margin: 1rem 0; }
+  img { display: block; width: 280px; height: 160px; }
+  .spacer { height: 55vh; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>A page that is mostly pictures</h1>
+  <video data-id="player"></video>
+  <p>One sentence of text. On a media page this is a caption, not the
+  content, so the media renderer does not draw it as text blocks.</p>
+
+  <h2>A row of pictures</h2>
+  <div class="row">
+    <img alt="" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 160'%3E%3Crect width='280' height='160' fill='%23e67e22'/%3E%3C/svg%3E" />
+    <img alt="" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 160'%3E%3Crect width='280' height='160' fill='%2327ae60'/%3E%3C/svg%3E" />
+  </div>
+
+  <div class="spacer"></div>
+
+  <h2>Lower down</h2>
+  <div class="row">
+    <img alt="" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 160'%3E%3Crect width='280' height='160' fill='%232980b9'/%3E%3C/svg%3E" />
+    <img alt="" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 160'%3E%3Crect width='280' height='160' fill='%238e44ad'/%3E%3C/svg%3E" />
+  </div>
+  <p>One last caption.</p>
+</div>
+</body>
+</html>

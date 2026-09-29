@@ -232,14 +232,32 @@ def main():
                   d.get("sticky-note", {}).get("visibility") == "visible",
                   str(d.get("sticky-note")))
 
-            print("\nno duplicate ids leaked into the page")
+            print("\nthe clone keeps the page's ids, in its own document")
             r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
                 const frame = document.querySelector(".scrollpeak-magnifier__frame");
                 const idoc = frame.contentDocument;
-                return [...idoc.querySelectorAll("[id]")].map(e => e.id);
+                const cloneIds = [...idoc.querySelectorAll("[id]")].map(e => e.id);
+                const pageEl = document.getElementById("graphics-title");
+                const cloneEl = idoc.getElementById("graphics-title");
+                return {
+                  cloneIds,
+                  cloned: !!cloneEl,
+                  sameText: !!cloneEl && !!pageEl &&
+                    cloneEl.textContent === pageEl.textContent,
+                  // The clone lives in a different document, so its ids cannot
+                  // make the page's own getElementById start matching it.
+                  pageOwnsIt: !!pageEl && pageEl.ownerDocument === document,
+                };
             """, "args": []})
-            ids = r.get("value", r)
-            check("clones carry no id attributes", not ids, str(ids))
+            d = r.get("value", r)
+            # The clone used to have every id stripped. That was harmless-
+            # looking and wrong: sites place their layout with id-keyed rules,
+            # and Wikipedia's article body reflowed into the wrong grid cell.
+            check("the clone keeps the page's ids",
+                  d["cloned"] and "graphics-title" in d["cloneIds"],
+                  str(d["cloneIds"]))
+            check("the page's own lookups still resolve to the page",
+                  d["pageOwnsIt"] and d["sameText"])
 
             print("\nthe map never takes the page's graphics colours")
             r = m.cmd("WebDriver:ExecuteScript", {"script": r"""

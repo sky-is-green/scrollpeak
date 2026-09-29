@@ -192,11 +192,15 @@
         el.remove();
       }
 
-      // A clone that duplicates the page's ids would make the page's own
-      // getElementById and querySelectorAll start matching the preview. In the
-      // frame it could not, but the ids are still noise; strip them.
-      clone.removeAttribute("id");
-      for (const el of clone.querySelectorAll("[id]")) el.removeAttribute("id");
+      // Ids stay. They used to be stripped, on the theory that a clone
+      // duplicating the page's ids would make the page's own getElementById
+      // start matching the preview -- which cannot happen through a frame,
+      // but the stripping was kept anyway. It is not harmless: a site whose
+      // cascade keys off an id loses those rules in the clone. On Wikipedia
+      // the Vector skin sets `grid-area` with `#content > .vector-body`, and
+      // without it the article body was auto-placed into the wrong grid cell:
+      // the clone's content moved 9,000px down the page, which is what the
+      // preview was showing. Keep every id.
 
       const t0 = performance.now();
 
@@ -249,6 +253,32 @@
       const imported = frameDoc.importNode(clone, true);
       const wrap = frameDoc.createElement("div");
       wrap.className = "scrollpeak-magnifier__page";
+      // Inline, because content.css is not part of document.styleSheets --
+      // content-script CSS is injected as an agent sheet -- so copyStyles()
+      // never copies the .scrollpeak-magnifier__page rule below into the
+      // frame. Without transform-origin the scale composes about the wrap's
+      // centre instead of its top-left, which moves the clone by
+      // (1 - SCALE) * half the document height: on Wikipedia about 8,900px.
+      // Relative offsets survive (the origin cancels in a difference), which
+      // is why the alignment test did not catch it; absolute placement does
+      // not, which is what a person sees.
+      wrap.style.transformOrigin = "0 0";
+      wrap.style.background = "#fff";
+      // Absolute at the frame's origin, again mirroring the rule that cannot
+      // reach here. The frame's body is subject to the page's own `body`
+      // rules -- the copied cascade styles it as if it were the page's body
+      // -- so a static wrap is pushed by that padding: on article.html, by
+      // its body padding, 16px right and 32px down. The relative-offset test
+      // cancels that constant and passes; the absolute check does not.
+      wrap.style.position = "absolute";
+      wrap.style.left = "0";
+      wrap.style.top = "0";
+      // And a `body > div` rule can still reach the wrap; these keep the box
+      // exactly the geometry the transform assumes.
+      wrap.style.margin = "0";
+      wrap.style.padding = "0";
+      wrap.style.border = "0";
+      wrap.style.display = "block";
       // The page's own layout width, so that percentage widths, tables and
       // floats resolve exactly as they do on the page.
       wrap.style.width = `${layoutWidth}px`;
@@ -379,27 +409,38 @@
       // per pointer move cost more than the layout did.
       const docHeight = Math.max(1, ctx.map.docHeight);
 
-      // Kate's preview starts at xStart = 0 -- the left edge of the document,
-      // because an editor's document has no left margin. A page does: a fixed
-      // sidebar or a centred column puts the content well right of x = 0, and
-      // showing the chrome instead of the article is not what the cursor was
-      // pointing at. So the preview starts at the left edge of the content
-      // *near this offset* rather than of the page as a whole, which is what
-      // makes the preview show the column the map's marks came from on a
-      // two-column page.
-      const visibleW = stageW / SCALE;
-      let left = ctx.map.contentLeftNear(docY);
-      // And never past the document's own right edge: with the left edge at a
-      // sidebar the window would otherwise end in blank strip.
-      left = Math.min(left, Math.max(0, pageWidth - visibleW));
-
       // The document point that lands at the stage's top-left corner. A point p
-      // is drawn at SCALE * (p - t), so t = p puts p at the corner.
-      const tx = left - BUFFER / SCALE;
+      // is drawn at SCALE * (p - t), so t = p puts p at the corner. Computed
+      // before the horizontal span, because the span is the content of the
+      // band this window will actually show.
       let ty = docY - stageH / (2 * SCALE);
       // Clamped, so the preview does not show blank space above the document
       // for a cursor near the top, nor below it near the bottom.
       ty = Math.max(0, Math.min(ty, Math.max(0, docHeight - stageH / SCALE)));
+
+      // Kate's preview starts at xStart = 0 -- the left edge of the document,
+      // because an editor's document has no left margin. A web page does: a
+      // centred article column sits well right of x = 0, a float narrows the
+      // text beside it, and a sidebar is a second column. Anchoring the
+      // window's left edge at the hovered line's x (the old contentLeftNear)
+      // left dead space on one side, clipped the other -- Wikipedia's
+      // infobox -- and jumped sideways whenever a longer or shorter line
+      // passed the cursor.
+      //
+      // Centre the column instead: the hovered point is already centred
+      // vertically, and this centres the content of its band horizontally,
+      // which is what "anything in the magnified viewport should be centred"
+      // asks for. The span is passed the band the window will show, not a
+      // guess at it.
+      const visibleW = stageW / SCALE;
+      const span = ctx.map.contentSpanNear(docY, ty, stageH / SCALE);
+      let left = (span.left + span.right - visibleW) / 2;
+      // And never past the document's own edges: with the window centred on
+      // a column beside the page's left edge, half of it would otherwise be
+      // blank strip.
+      left = clamp(left, 0, Math.max(0, pageWidth - visibleW));
+
+      const tx = left - BUFFER / SCALE;
 
       // scale() then translate(): the translate is in the clone's own
       // coordinates, so the pair maps document point t to the stage origin.
@@ -418,6 +459,15 @@
         boxes: buildMs,           // milliseconds spent building the clone
         nodes: nodeCount,
         docHeight: Math.round(docHeight),
+        // Where the window starts, and the content span it was centred on.
+        // Read by the preview tests; the visible symptom of both open bugs
+        // was here rather than in the relative offsets.
+        left: Math.round(left),
+        span: [Math.round(span.left), Math.round(span.right)],
+        // The map revision the clone was built from. When this is behind
+        // ctx.map.revision the preview is knowingly stale -- see SETTLE_MS.
+        builtAt,
+        revision: ctx.map.revision,
       });
     }
 

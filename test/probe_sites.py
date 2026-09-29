@@ -20,6 +20,7 @@ from harness import SRC, launch_firefox, stop_firefox  # noqa: E402
 SITES = [
     ("GitHub (SPA)", "https://github.com/mozilla/firefox"),
     ("Wikipedia", "https://en.wikipedia.org/wiki/Firefox"),
+    ("YouTube watch (media)", "https://www.youtube.com/watch?v=jNQXAC9IVRw"),
     ("w3.org spec (20k nodes)", "https://www.w3.org/TR/CSS-color-4/"),
     ("MDN reference", "https://developer.mozilla.org/en-US/docs/Web/CSS/color-mix"),
     ("Hacker News (short)", "https://news.ycombinator.com/"),

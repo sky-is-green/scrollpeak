@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrollPeak id-grid fixture</title>
+<style>
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif;
+         color: #1c1c1e; background: #fdfdfc; }
+  /* The grid places its children only through id-keyed rules, and the DOM
+     order is the opposite of the visual order. Strip the ids -- which
+     buildPage() used to -- and auto-placement swaps the two columns. This is
+     Wikipedia's Vector case in miniature: `#content > .vector-body` carries
+     the grid-area, and without it the article body was placed in the wrong
+     grid cell and the clone's content moved thousands of pixels. */
+  #layout { display: grid; grid-template-columns: 260px 1fr;
+            grid-template-areas: "side main"; }
+  #layout > #main { grid-area: main; }
+  #layout > #side { grid-area: side; }
+  #main { padding: 1rem 1.5rem; }
+  #side { background: #eee; min-height: 100vh; padding: 1rem; }
+  h1 { font-size: 1.8rem; color: #10233f; }
+  h2 { color: #1d4e89; }
+  p { max-width: 42rem; }
+  .spacer { height: 80vh; }
+</style>
+</head>
+<body>
+<div id="layout">
+  <div id="main">
+    <h1 id="firstHeading">The id grid</h1>
+    <p>This column is placed by an id-keyed grid rule, and it comes first in
+    the markup while sitting second on screen.</p>
+    <h2>A section</h2>
+    <p>If the clone keeps the ids, the two columns land where the page puts
+    them and the preview shows the article. If it does not, auto-placement
+    swaps them and this text ends up on the left under the sidebar.</p>
+    <div class="spacer"></div>
+    <h2>Lower down</h2>
+    <p>More text below the spacer, so the preview has something to show
+    wherever the pointer is.</p>
+  </div>
+  <div id="side">
+    <h2>Sidebar</h2>
+    <p>Navigation and tools live here on the page, and must stay here in the
+    clone.</p>
+  </div>
+</div>
+</body>
+</html>
