@@ -87,29 +87,30 @@ because by design it draws every line from the left margin. The third is
 content: a page whose content is pictures — a player, a card grid, a shop's
 search results — is block-shaped however its text falls.
 
-Blocks are drawn from every element on the page, not from a vocabulary: text
-areas filled white or black, whichever contrasts with the strip; links in the
-page's own link colour, pushed to contrast the same way the raster's marks are;
-images and video as hollow 1px outlines; form controls as boxes in the
-browser's own field, face and border colours, so a settings page reads as the
-controls it is made of; and every other element that paints a background, a
-border or a background image as an outline in its own colour. That last part is
-what reads on app-shaped pages: a shop card, a recommendation thumbnail and a
-player are divs, images and `<video>`, and a selector that only knew document
-tags left them invisible, so the map was a handful of stray labels. A box that
-paints the page background itself is left out — it is the page, and drawing it
-would flood the strip and mislead everything drawn over it. It is an addition
-to the port rather than a change to it: on a long single-column document, where
-Kate's raster reads as text, nothing about it changes.
+Blocks are deliberately a small vocabulary: text areas filled white or black,
+whichever contrasts with the strip; links in the page's own link colour,
+pushed to contrast the same way the raster's marks are; pictures and players
+as solid bars; form controls as boxes in the browser's own field, face and
+border colours, so a settings page reads as the controls it is made of. A page
+of pictures gets bars because at this size a photo, a chart and a video differ
+only in ways a 70px strip cannot show; inventing a representation for each
+site's design would be a second product, and the map would still be wrong on
+the next site. The bar says what a minimap can honestly say — the page stops
+being text here — and it hovers like every other part of the strip, opening
+the preview on that region. A player that parks its `<video>` outside the
+document (YouTube does) is drawn at its container, which is what the visitor
+is looking at; see `#visibleContainer()`. It is an addition to the port rather
+than a change to it: on a long single-column document, where Kate's raster
+reads as text, nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
 **A page that is mostly pictures gets that block map, not the browser's
 scrollbar.** An earlier version gave those pages up: the rail did not mount and
 the native scrollbar stayed. Measured on live pages — eBay's search, Amazon's
-list, Reddit's front, YouTube's watch page — the generalized blocks read as the
-page, so the rail keeps them, and `isMediaPage()` now only chooses the
-renderer. Which pages count is measured, not taste: a video at least 300×150
+list, Reddit's front, YouTube's watch page — the block map reads as the page,
+so the rail keeps them, and `isMediaPage()` now only chooses the renderer.
+Which pages count is measured, not taste: a video at least 300×150
 (Wikipedia's 250×141 infobox thumbnail must not qualify), at least twelve
 pictures of 200×100 covering more than a third of the document (Reddit's front
 38 at 56%, BBC's front 43 at 33%; against Wikipedia 9 at 1.4%, GitHub 1 at 2%),
@@ -477,11 +478,12 @@ Known limits, in rough priority order:
   images, borders and empty containers carry no marks; that is Kate's model.
   When the text is stretched too far, spread across columns, or the page's
   content is pictures, it switches to the semantic blocks described above,
-  where every painted element is drawn, images are outlines and links are
-  their own colour. A box that paints the page background itself is skipped,
-  and a fixed overlay is not the page. A page with heavy grid or flex layout
-  still maps its text where the browser put it, and the preview is unaffected
-  — the preview is the page.
+  where text and links are drawn, pictures and players are bars and controls
+  keep their browser colours. A page's own design — cards, panels, background
+  images — is deliberately not drawn: the map cannot represent every site, so
+  it does not try. A fixed overlay is not the page. A page with heavy grid or
+  flex layout still maps its text where the browser put it, and the preview is
+  unaffected — the preview is the page.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
   on the first hover of a page load; it is the one rough edge left in frame

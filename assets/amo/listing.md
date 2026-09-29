@@ -39,8 +39,9 @@ you where the rest of the page is before you go there.
   their own colour, pictures as outlines, form controls as boxes in their
   browser colours — so it stays clean instead of blurring.
 - On pages that are mostly pictures — a video player, a card grid, a shop's
-  search results — the map is drawn from the page's own boxes: the player, the
-  cards, the pictures and the controls as shapes in the page's own colours.
+  search results — the map keeps the text and draws pictures and players as
+  solid bars, so the page still gets a map rather than the browser's own
+  scrollbar.
 - The map's width, the preview's size, its colours and a per-site exclusion
   list are all settings.
 - The default strip colour follows your Firefox theme.

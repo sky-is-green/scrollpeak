@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrollPeak parked-player fixture</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0 auto; max-width: 44rem;
+         padding: 2rem 1rem 6rem; color: #1c1c1e; background: #fdfdfc; }
+  h1 { color: #10233f; }
+  h2 { color: #1d4e89; margin-top: 2rem; }
+  /* YouTube's shape: the container is what the page shows, and the video is
+     parked above the document, absolutely, so its own rect cannot be placed
+     on the map. The map must draw the bar where the container is rather than
+     clip the video's rect away. */
+  .player { position: relative; width: 640px; height: 360px; background: #222; }
+  .player video { position: absolute; top: -1000px; left: 0; width: 640px;
+                  height: 360px; background: #000; }
+  .spacer { height: 60vh; }
+</style>
+</head>
+<body>
+<h1>A player parked above the page</h1>
+<p>The visible player is the container; the video itself sits outside the
+document. The map draws one bar, where the container is.</p>
+<div class="player" data-bar-check><video data-id="parked"></video></div>
+<div class="spacer"></div>
+<h2>Lower down</h2>
+<p>Enough text below the player that the page scrolls.</p>
+</body>
+</html>

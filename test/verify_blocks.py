@@ -5,8 +5,8 @@ Check the map's two renderers, and when each is used.
 Kate's map is a text raster, and on a long document it stays one. On a short
 one the raster is stretched until every line is a band of blobs, so the map
 switches to semantic blocks: text areas filled black or white (whichever
-contrasts with the strip), links in the page's own link colour, images as
-hollow 1px outlines, and form controls as boxes in the browser's own field,
+contrasts with the strip), links in the page's own link colour, pictures and
+players as solid bars, and form controls as boxes in the browser's own field,
 face and border colours. That switch and that vocabulary are what this pins
 down.
 
@@ -156,12 +156,6 @@ def main():
     def rgb(value):
         return [int(v) for v in value[4:-1].split(",")]
 
-    def lum(c):
-        def f(v):
-            v /= 255
-            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
-        return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2])
-
     ext = sys.argv[1] if len(sys.argv) > 1 else SRC
 
     with fixture_server() as server:
@@ -222,20 +216,16 @@ def main():
                 check(f"{cid} leaves a mark", c["hits"] >= 1,
                       f"{c['w']}x{c['h']}px, {c['hits']} painted nearby")
 
-            print("\nimages are blocks, drawn hollow")
+            print("\nimages are blocks, drawn as solid bars")
             d = page(BLOCKS)
             check("renderer is blocks", d["mode"] == "blocks", str(d["mode"]))
             check("the image is a block", d["blocks"]["image"] == 1,
                   json.dumps(d["blocks"]))
             strip, ink = rgb(d["strip"]), rgb(d["ink"])
             centre = d["samples"]["imageCentre"]
-            check("the image's inside is the strip",
-                  all(abs(centre[i] - strip[i]) <= 3 for i in range(3)),
-                  f"{centre} vs strip {strip}")
-            edge = max(d["samples"]["imageEdgeRow"], key=lum)
-            check("its outline is drawn",
-                  lum(edge) > lum(strip) + 0.15,
-                  f"edge {edge} vs strip {strip}")
+            check("the image is a filled bar, not a hole",
+                  all(abs(centre[i] - ink[i]) <= 6 for i in range(3)),
+                  f"{centre} vs ink {ink}")
 
             print("\nimages do not bring their own colours")
             d = page(GRAPHICS)

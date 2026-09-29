@@ -23,6 +23,7 @@ from harness import SRC, fixture_server, launch_firefox, stop_firefox  # noqa: E
 
 MEDIA = "/media.html"        # a 480x270 player and four pictures: blocks
 GALLERY = "/gallery.html"    # sixteen large pictures, no video: blocks
+PARKED = "/parked-player.html"  # the player's video sits above the page
 SMALL = "/small-media.html"  # a 250x141 video: a thumbnail, not a player
 LATE = "/late-media.html"    # a long article that grows a player later
 LIGHTBOX = "/lightbox.html"  # a long article that opens a fixed media overlay
@@ -43,12 +44,52 @@ const out = {
   scrollbarWidth: getComputedStyle(root).scrollbarWidth,
   docHeight: document.scrollingElement.scrollHeight,
   viewport: window.innerHeight,
+  railRect: null,
+  bar: null, strip: null, ink: null, barScreenY: null,
+  previewOpen: null,
 };
 try {
   out.blocks = map && map.dataset.blocks ? JSON.parse(map.dataset.blocks) : null;
 } catch (e) { out.blocksErr = String(e); }
+if (rail) {
+  const rr = rail.getBoundingClientRect();
+  out.railRect = [Math.round(rr.left), Math.round(rr.top),
+                  Math.round(rr.width), Math.round(rr.height)];
+}
+const cs = getComputedStyle(root);
+out.strip = cs.getPropertyValue("--sp-strip").trim();
+out.ink = cs.getPropertyValue("--sp-ink").trim();
+// The solid bar a picture or player is drawn as: project the element's
+// centre the same way #paintBlocks() does and read the map pixel there. A
+// fixture can point at the visible container with data-bar-check when the
+// media element itself is parked outside the document (YouTube's player).
+const barEl = document.querySelector("[data-bar-check]") ||
+              document.querySelector("video[data-id]");
+if (map && barEl && map.dataset.blockSpan && map.dataset.docRect &&
+    map.dataset.docHeight) {
+  const span = JSON.parse(map.dataset.blockSpan);
+  const rect = JSON.parse(map.dataset.docRect);
+  const docH = Number(map.dataset.docHeight);
+  const r = barEl.getBoundingClientRect();
+  const docX = r.left + scrollX + r.width / 2;
+  const docY = r.top + scrollY + r.height / 2;
+  const x = 1 + ((docX - span.left) /
+    Math.max(1, span.right - span.left)) * (map.width - 2);
+  const y = rect.top + (docY / docH) * rect.height;
+  const px = Math.max(0, Math.min(map.width - 1, Math.round(x)));
+  const py = Math.max(0, Math.min(map.height - 1, Math.round(y)));
+  const d = map.getContext("2d").getImageData(px, py, 1, 1).data;
+  out.bar = [d[0], d[1], d[2], d[3]];
+  out.barScreenY = Math.round(y);
+}
+const pop = document.querySelector(".scrollpeak-magnifier");
+out.previewOpen = pop ? pop.classList.contains("is-open") : null;
 return out;
 """
+
+
+def rgb(value):
+    return [int(v) for v in value[4:-1].split(",")]
 
 
 def main():
@@ -83,9 +124,46 @@ def main():
             check("the player and the pictures are blocks",
                   d["blocks"] and d["blocks"]["image"] >= 5,
                   json.dumps(d["blocks"]))
+            ink = rgb(d["ink"]) if d["ink"] else None
+            check("the player is a solid bar in the strip's ink",
+                  d["bar"] and ink and
+                  all(abs(d["bar"][i] - ink[i]) <= 8 for i in range(3)),
+                  f"bar={d['bar']} ink={ink}")
             check("the native scrollbar stays suppressed",
                   d["active"] and d["scrollbarWidth"] == "none",
                   f"active={d['active']} scrollbar={d['scrollbarWidth']}")
+
+            # A bar is not a dead region: the whole strip stays hoverable, so
+            # pointing at the player's bar must open the preview there.
+            x = d["railRect"][0] + d["railRect"][2] // 2
+            y = d["railRect"][1] + (d["barScreenY"]
+                                    if d["barScreenY"] is not None
+                                    else d["railRect"][3] // 2)
+            m.cmd("WebDriver:PerformActions", {"actions": [{
+                "type": "pointer", "id": "mouse",
+                "parameters": {"pointerType": "mouse"},
+                "actions": [{"type": "pointerMove", "duration": 16,
+                             "origin": "viewport", "x": x, "y": y}],
+            }]})
+            time.sleep(0.9)
+            d2 = read()
+            check("hovering the bar opens the preview",
+                  d2["previewOpen"] is True, f"previewOpen={d2['previewOpen']}")
+
+            print("\na player parked above the page still leaves a bar")
+            d = page(PARKED)
+            check("the rail is mounted", d["rail"] and d["map"],
+                  f"rail={d['rail']} map={d['map']}")
+            check("the map is the block renderer", d["mode"] == "blocks",
+                  str(d["mode"]))
+            check("the parked player is a block",
+                  d["blocks"] and d["blocks"]["image"] >= 1,
+                  json.dumps(d["blocks"]))
+            ink = rgb(d["ink"]) if d["ink"] else None
+            check("the bar is drawn where the container is",
+                  d["bar"] and ink and
+                  all(abs(d["bar"][i] - ink[i]) <= 8 for i in range(3)),
+                  f"bar={d['bar']} ink={ink}")
 
             print("\na wall of pictures is mapped as blocks")
             d = page(GALLERY)
