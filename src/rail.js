@@ -101,10 +101,28 @@
 
     let rebuildTimer = null;
 
+    /**
+     * Is the pointer on the rail?
+     *
+     * A rebuild is not free: collect() walks every text node in the page and
+     * buildPixmap() rasterises them all, and on a long article that is tens of
+     * milliseconds. It runs on a timer, so it lands whenever it lands -- which
+     * at speed is the middle of a drag, and the preview visibly stalls and then
+     * catches up. While the pointer is on the rail nothing is rebuilt; it
+     * happens as soon as the pointer leaves. Nothing is lost: a map built a
+     * moment late is no less correct.
+     */
+    let pointerOnRail = false;
+
     /** Kate's updatePixmap(), behind his 300ms single-shot timer. */
     function rebuild() {
       clearTimeout(rebuildTimer);
       rebuildTimer = setTimeout(() => {
+        if (pointerOnRail) {
+          // Ask again once the pointer has gone; pointerleave also asks.
+          rebuild();
+          return;
+        }
         const t0 = performance.now();
         map.collect(content);
         map.buildPixmap();
@@ -155,6 +173,18 @@
     };
     if (scheme.addEventListener) scheme.addEventListener("change", onSchemeChange);
     else scheme.addListener(onSchemeChange);
+
+    const railNode = rail.rail.domNode;
+    const onRailEnter = () => {
+      pointerOnRail = true;
+    };
+    const onRailLeave = () => {
+      pointerOnRail = false;
+      // Pick up whatever was deferred while the pointer was here.
+      rebuild();
+    };
+    railNode.addEventListener("pointerenter", onRailEnter);
+    railNode.addEventListener("pointerleave", onRailLeave);
 
     const observer = new ResizeObserver(relayout);
     observer.observe(content);
@@ -324,6 +354,8 @@
         window.removeEventListener("keydown", onPeekTrigger);
         document.documentElement.classList.remove(
           "scrollpeak-minimap-only", "scrollpeak-peek", "scrollpeak-visible");
+        railNode.removeEventListener("pointerenter", onRailEnter);
+        railNode.removeEventListener("pointerleave", onRailLeave);
         window.removeEventListener("scroll", repaint);
         window.removeEventListener("resize", relayout);
         if (scheme.removeEventListener) scheme.removeEventListener("change", onSchemeChange);

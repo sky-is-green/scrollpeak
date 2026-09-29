@@ -56,6 +56,21 @@
   // Kate: m_textPreview->setScaleFactor(0.75)
   const SCALE = 0.75;
 
+  // How long the pointer must be still before the clone is rebuilt.
+  //
+  // Rebuilding it is the expensive half of the preview: it is the whole page,
+  // and the sweep that takes viewport-pinned overlays out reads a computed
+  // style for every element. Measured on the Firefox article -- 13,500 nodes --
+  // a rebuild costs about 130ms. On the rail's 300ms timer that lands in the
+  // middle of a drag, and at speed the pointer is moving for most of it: frame
+  // times went p95 133ms with ten of 107 frames dropped, against p95 17ms and
+  // two dropped when the clone is not rebuilt at all.
+  //
+  // So it is not rebuilt while the pointer is moving. A stale clone is a
+  // slightly out-of-date page, which is a much smaller lie than a preview that
+  // cannot keep up with the cursor.
+  const SETTLE_MS = 180;
+
   // A small gap inside the frame, so the content does not touch the border.
   // Deliberately small: every pixel here is a pixel of the page pushed out of
   // view, and the frame is already only half the window wide.
@@ -93,6 +108,7 @@
     let builtAt = -1;
     let buildMs = 0;
     let nodeCount = 0;
+    let settleTimer = null;
 
     // The frame's size and the stage's, measured when they change rather than
     // when the pointer moves. Reading clientWidth after writing the popup's
@@ -223,7 +239,9 @@
 
     /** Rebuild the preview for the document offset under the cursor. */
     function paint(docY) {
-      if (builtAt !== ctx.map.revision || !page) {
+      // Built once, then reused. A rebuild is deferred to the settle timer;
+      // see SETTLE_MS. Doing it here would put it inside a pointer event.
+      if (!page) {
         if (!buildPage()) return;
       }
 
@@ -321,8 +339,21 @@
      * while the pointer is moving and only fires once it stops, so the preview
      * visibly lags and then jumps.
      */
+    /** Rebuild the clone once the pointer has stopped moving. */
+    function scheduleSettle() {
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        settleTimer = null;
+        if (!visible || builtAt === ctx.map.revision) return;
+        if (!buildPage()) return;
+        paint(latestY);
+        position(latestY);
+      }, SETTLE_MS);
+    }
+
     function schedule(clientY) {
       latestY = clientY;
+      scheduleSettle();
       if (created) {
         // One paint per frame. A pointer moving quickly fires pointermove more
         // than once per frame, and there is nothing to gain from painting a
@@ -353,6 +384,17 @@
     const rail = ctx.rail.rail.domNode;
     rail.addEventListener("pointermove", (e) => schedule(e.clientY));
     rail.addEventListener("pointerleave", hide);
+    // Build on arrival, not on the first paint.
+    //
+    // The build is the expensive half and it has to happen somewhere. Kate's
+    // preview does not appear until 250ms after the pointer arrives, so a build
+    // started on entry is finished inside that delay and costs nothing anyone
+    // can see. Left until the first paint, it lands *after* the delay, in the
+    // middle of the first movement, which is the one place it is visible.
+    rail.addEventListener("pointerenter", () => {
+      if (page && builtAt === ctx.map.revision) return;
+      buildPage();
+    });
     // Kate hides the preview on WindowDeactivate; losing focus is the browser
     // equivalent, and also when a stale preview would be most misleading.
     window.addEventListener("blur", hide);
@@ -369,6 +411,7 @@
       },
       teardown() {
         hide();
+        clearTimeout(settleTimer);
         if (frame !== null) cancelAnimationFrame(frame);
         frame = null;
         window.removeEventListener("blur", hide);
