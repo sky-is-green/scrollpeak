@@ -210,8 +210,39 @@
       node.removeAttribute("name");
       for (const el2 of node.querySelectorAll("[id]")) el2.removeAttribute("id");
 
+      stripText(node);
+
       place(node, (box.x - left) * SCALE, (box.y - centre) * SCALE, w, h);
       return node;
+    }
+
+    /**
+     * Remove every DOM text node from a cloned graphic.
+     *
+     * The text pass already drew each of them, at its own position and in its
+     * own colour, so a clone that keeps its text draws it a second time on top.
+     * Not a theoretical problem: on the Wikipedia usage-share table 778 of the
+     * links carry a background-image, so every one of them was cloned whole and
+     * each one's label appeared twice, overlapping.
+     *
+     * Stripping DOM text is the right cut rather than refusing to clone such
+     * elements, because it separates the two things a clone can carry:
+     *
+     *   * DOM text, which the text pass owns -- already drawn once, at the right
+     *     place, in the right colour, and adjusted to contrast with the strip;
+     *   * everything else the element paints: a background-image, a border, a
+     *     box shadow, and above all CSS-generated content from ::before and
+     *     ::after, which is not a text node at all and so the text pass cannot
+     *     see it. A table's sort arrow is exactly that -- it lives in
+     *     content:"" and only a clone reproduces it.
+     */
+    function stripText(root) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const texts = [];
+      // Collected first, then removed: a live TreeWalker is disturbed by the
+      // tree changing underneath it.
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n);
+      for (const t of texts) t.remove();
     }
 
     function place(el, x, y, w, h) {

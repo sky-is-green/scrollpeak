@@ -94,6 +94,12 @@ html.vugluscr_embedded {
   overflow: hidden;
   border: 1px solid var(--sp-border);
   border-radius: 3px;
+  /* A buffer inside the frame. The preview's coordinates are the page's own,
+     so without this the first run of text starts hard against the border and
+     the whole thing reads as clipped rather than as a window onto the page.
+     Kate's preview is a frameless tool window and has the same breathing room. */
+  box-sizing: border-box;
+  padding: 10px 14px;
   background: var(--sp-bg);
   box-shadow: 0 2px 12px var(--sp-shadow);
 
@@ -115,6 +121,7 @@ html.vugluscr_embedded {
  * systems get their colour. That is the whole reason this is not a canvas. */
 .scrollpeak-magnifier__stage {
   position: relative;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   overflow: hidden;
