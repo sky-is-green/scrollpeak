@@ -68,6 +68,64 @@ centred on the hovered line and debounced by 250ms so that sweeping the mouse
 across the scrollbar does not strobe it. `src/magnifier.js` reproduces all of
 that.
 
+**The preview is DOM, not a canvas.** Kate draws the preview with
+`paintTextLine`, which draws text lines, because in a text editor text is the
+whole of the content. A web page is not text: a 16px icon beside a label is
+often the only thing that says what a row is. So the preview shows the page's
+graphics too — as cloned elements positioned in a stage, not as pixels.
+
+Cloning into the document is the point. A serialised inline `<svg>` gets none
+of the page's stylesheet, so the `fill: currentColor` that most icon systems
+use comes out blank; a clone stays in the page's cascade and keeps working.
+Images and canvas are cloned too, with the canvas's pixels copied across, since
+a clone of one is blank. Clones have their `id`s stripped, or the page's own
+`getElementById` would start matching the preview.
+
+**A clone carries no DOM text.** The text pass already drew every line box, at
+its own position and in its own colour, so a clone that keeps its text draws it
+a second time on top. Not a theoretical problem: on Wikipedia's usage-share
+table **778 of the links carry a `background-image`** (15 media elements, 919
+background-image elements, 778 of them `<a>`), so every one was cloned whole
+and every one of their labels appeared twice, a few pixels apart.
+
+Stripping DOM text is the right cut rather than refusing to clone those
+elements, because it separates the two things a clone can carry:
+
+- DOM text, which the text pass owns — drawn once, in the right place, and
+  adjusted to contrast with the strip;
+- everything else the element paints: a background-image, a border, a box
+  shadow, and above all CSS-generated content from `::before`/`::after`, which
+  is not a text node at all and so the text pass *cannot* see it. A table's
+  sort arrow is exactly that; only a clone reproduces it.
+
+`test/verify_graphics.py` covers both directions: a labelled background-image
+element must be cloned with empty text and its label drawn once, and a
+`::before` must survive. Reinstaining the old behaviour fails with
+`['SPAN', 'SPAN']` — the label, twice.
+
+Two things the DOM form needs that a canvas did not:
+
+- **Every axis is scaled by 0.75**, not just the font size. Scaling only the
+  font leaves the line pitch at 1/0.75 of the page's, which reads as broken
+  spacing.
+- **A run's text has to be the text the browser rendered.** A text node keeps
+  the newlines from the HTML source, which the browser collapses to a space
+  when it lays the line out. The preview draws with `white-space: pre`, so a
+  surviving newline becomes a *real* line break: the run spills onto a second
+  line and collides with the run below it — which is what a hard-wrapped HTML
+  source does to every paragraph. `renderedText()` puts the slice back into the
+  shape the rects came from, except where whitespace is genuinely significant
+  (`<pre>`, `white-space: pre*`), which is detected per element from its own
+  computed value rather than guessed.
+
+The preview also has a 10x14px buffer inside its frame. Its coordinates are the
+page's own, so without one the first run of text begins hard against the border
+and reads as clipped rather than as a window onto the page.
+
+`test/verify_preview_lines.py` asserts all of that against the page's own
+measured geometry, and each assertion has been checked against a deliberate
+reinstatement of the bug it exists for.
+
 **We do not screenshot the page.** `tabs.captureVisibleTab` accepts a `rect`
 in page coordinates, so off-screen capture is nominally possible — but
 `content-visibility: auto` (Baseline 2024) tells the user agent to skip layout
@@ -222,6 +280,19 @@ darker shade of, in order of preference:
    actually paints one, since a body background is transparent by default and
    many sites set theirs on `<html>` or a full-bleed wrapper;
 3. the system's light or dark appearance, for a page that paints nothing.
+
+Two things measured rather than assumed, because they decide how much of this
+is possible:
+
+- **`theme.getCurrent()` is `{}` unless a theme is installed.** With the default
+  theme it returns no colours at all, so there is nothing to read, and the
+  fallback to the page is what covers that case.
+- **A content script cannot see Firefox's own widget colours.** `ButtonFace`,
+  `AccentColor` and `-moz-Dialog` all resolve in a page, and they resolve to
+  Firefox's *light* palette — measured identical with
+  `ui.systemUsesDarkTheme` set to 1, while `prefers-color-scheme` correctly
+  reported dark. So `prefers-color-scheme` is the only live signal about the
+  machine a page can get, and it is all the third step above uses.
 
 `browser.theme.onUpdated` re-derives and repaints in place, so changing theme
 does not reload the page. `prefers-color-scheme` is watched for the same reason.
