@@ -94,12 +94,12 @@ html.vugluscr_embedded {
   overflow: hidden;
   border: 1px solid var(--sp-border);
   border-radius: 3px;
-  /* A buffer inside the frame. The preview's coordinates are the page's own,
-     so without this the first run of text starts hard against the border and
-     the whole thing reads as clipped rather than as a window onto the page.
-     Kate's preview is a frameless tool window and has the same breathing room. */
+  /* A small buffer, so the first run of text is not hard against the frame and
+     does not read as clipped. Deliberately small: the preview's coordinates are
+     the page's own, so every pixel of padding is a pixel of the page that is
+     pushed out of view. */
   box-sizing: border-box;
-  padding: 10px 14px;
+  padding: 3px 6px;
   background: var(--sp-bg);
   box-shadow: 0 2px 12px var(--sp-shadow);
 

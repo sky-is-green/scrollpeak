@@ -169,6 +169,17 @@ def main():
                     check("the clone keeps its CSS-generated ::before",
                           d["before"] and ">>" in d["before"], str(d["before"]))
 
+            print("\nout-of-flow content is left out entirely")
+            r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
+                const stage = document.querySelector(".scrollpeak-magnifier__stage");
+                const text = stage ? stage.textContent : "";
+                return {sticky: text.includes("STICKY-MUST-NOT-APPEAR"),
+                        fixed: text.includes("FIXED-MUST-NOT-APPEAR")};
+            """, "args": []})
+            d = r.get("value", r)
+            check("a sticky element is not mapped", not d["sticky"])
+            check("a fixed element is not mapped", not d["fixed"])
+
             print("\nno duplicate ids leaked into the page")
             r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
                 const stage = document.querySelector(".scrollpeak-magnifier__stage");

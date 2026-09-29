@@ -55,11 +55,14 @@ function report() {
       text: el.textContent,
       hasNewline: /[\n\r\t]/.test(el.textContent),
       hasDoubleSpace: /  /.test(el.textContent),
-      edge: (el.textContent !== el.textContent.trim()),
+      // Leading whitespace is correct and expected: it is the real space
+      // between two inline elements, and dropping it pulls a run back over the
+      // one before it. Trailing is always noise.
+      trailing: (el.textContent !== el.textContent.replace(/ +$/, "")),
       lineBoxes: r.height / lh,
       left: r.left - s.left,
       top: r.top - s.top,
-      w: Math.round(r.width), h: Math.round(r.height),
+      w: r.width, h: r.height,
       fs: parseFloat(cs.fontSize),
       inlineWidth: el.style.width, inlineHeight: el.style.height,
     };
@@ -136,9 +139,25 @@ def main():
     check("no run carries a collapsed double space", not doubles,
           "; ".join(repr(r["text"][:34]) for r in doubles) or "none")
 
-    edges = [r for r in runs if r["edge"]]
-    check("no run is indented or trailing-spaced", not edges,
-          "; ".join(repr(r["text"][:34]) for r in edges) or "none")
+    trailing = [r for r in runs if r["trailing"]]
+    check("no run carries trailing whitespace", not trailing,
+          "; ".join(repr(r["text"][:34]) for r in trailing) or "none")
+
+    # The objective form of "the text overlaps": any two rendered runs whose
+    # boxes overlap in both axes. This is what found the real bugs -- a run
+    # whose box was far taller than its line, and a run shifted left by
+    # trimming the whitespace it starts with.
+    pairs = []
+    for i in range(len(runs)):
+        for j in range(i + 1, len(runs)):
+            a, b = runs[i], runs[j]
+            ox = min(a["left"] + a["w"], b["left"] + b["w"]) - max(a["left"], b["left"])
+            oy = min(a["top"] + a["h"], b["top"] + b["h"]) - max(a["top"], b["top"])
+            if ox > 2 and oy > 2:
+                pairs.append(f"{a['text'][:14]!r}/{b['text'][:14]!r} "
+                             f"{ox:.0f}x{oy:.0f} at y {a['top']:.0f},{b['top']:.0f}")
+    check("no two rendered runs overlap", not pairs,
+          "; ".join(pairs[:3]) or f"{len(runs)} runs, all disjoint")
 
     # 2. the font is scaled
     check("the font is scaled by 0.75",

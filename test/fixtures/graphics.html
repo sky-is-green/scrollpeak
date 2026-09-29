@@ -18,6 +18,16 @@
            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 24'%3E%3Crect width='120' height='24' fill='%23c0392b'/%3E%3Crect x='6' y='6' width='12' height='12' fill='%23fff'/%3E%3C/svg%3E"); }
   .spacer { height: 42vh; }
 
+  /* Out of flow. A fixed or sticky element reports a viewport-relative rect,
+     which we convert to document coordinates by adding scrollY, so its
+     document position is simply wrong -- and on a real site they pile up at
+     that wrong position. Wikipedia's sticky header, page tools and TOC toggle
+     landed together at x = -138 over the article's own text. */
+  .sticky-note { position: sticky; top: 0; padding: 2px 4px;
+                 background: #e74c3c; color: #fff; }
+  .fixed-note { position: fixed; top: 4px; right: 4px; padding: 2px 4px;
+                background: #8e44ad; color: #fff; }
+
   /* The double-render case, from a real page: 778 of the links on Wikipedia's
      usage-share table carry a background-image, so each one's label was cloned
      whole and drawn a second time on top of the text run. */
@@ -68,6 +78,8 @@ its text.</p>
   <span class="bgimg" data-id="bg-img"></span>
   <span class="bgimg-labelled" data-id="bg-text">LABEL-IN-BG</span>
   <span class="bg-pseudo" data-id="bg-pseudo"></span>
+  <div class="sticky-note">STICKY-MUST-NOT-APPEAR</div>
+  <div class="fixed-note">FIXED-MUST-NOT-APPEAR</div>
   <span>red bar, 120x24, from background-image</span>
 </div>
 

@@ -228,6 +228,17 @@
     <!-- The same colour maths the content script runs, so the swatch above is
          the colour the strip will actually be rather than a guess. -->
     <script src="../colour.js"></script>
+    <!-- The real thing, mounted on this page.
+         The point is that the settings can be seen landing without leaving:
+         every control here moves the minimap on the right-hand edge of this
+         very page. Same files the content script loads, in the same order --
+         they are plain globals, not modules, so they work here unchanged. -->
+    <link rel="stylesheet" href="../content.css" />
+    <script src="../vendor/vugluscr.standalone.js"></script>
+    <script src="../colour.js"></script>
+    <script src="../textmap.js"></script>
+    <script src="../rail.js"></script>
+    <script src="../magnifier.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

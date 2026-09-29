@@ -61,46 +61,6 @@ async function init() {
   bindCheckbox("hideTrack", settings.hideTrack);
   bindCheckbox("hideWhenIdle", settings.hideWhenIdle);
 
-  // A colour that has a default cannot be shown as empty in a colour input, so
-  // the swatch shows what the default will actually resolve to. Same
-  // arithmetic as the content script (colour.js), so the two cannot disagree.
-  const C = globalThis.ScrollPeekColour;
-  const rgbHex = (rgb) =>
-    "#" + rgb.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
-
-  async function paintColours() {
-    const [current, theme] = await Promise.all([
-      browser.runtime.sendMessage({ type: "scrollpeak:getSettings" }),
-      browser.runtime.sendMessage({ type: "scrollpeak:getTheme" }).catch(() => null),
-    ]);
-    const strip = C.resolveStripBackground({
-      chosen: current.mapBackground,
-      theme: theme?.base,
-      // The page being minimapped is not this popup, so its own background is
-      // not knowable here; the browser's is, and that is what wins by default.
-      page: "",
-      systemDark: matchMedia("(prefers-color-scheme: dark)").matches,
-      amount: Number(current.darkenAmount),
-    });
-    $("mapBackground").value = current.mapBackground || rgbHex(strip.rgb);
-    $("markColour").value = current.markColour || rgbHex(
-      C.ensureContrast(
-        C.resolveColor(current.markColour || theme?.text) || [255, 255, 255],
-        strip.rgb,
-        Number(current.markContrast) || 3,
-      ),
-    );
-  }
-
-  for (const [id, key] of [["mapBackground", "mapBackground"], ["markColour", "markColour"]]) {
-    $(id).addEventListener("change", () => save({ [key]: $(id).value }));
-    $(`${key}-reset`).addEventListener("click", async () => {
-      await save({ [key]: "" });
-      await paintColours();
-    });
-  }
-  paintColours();
-
   const excluded = (settings.disabledSites || []).length;
   $("site-count").textContent = excluded
     ? `${excluded} site${excluded === 1 ? "" : "s"} excluded`

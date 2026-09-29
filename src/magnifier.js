@@ -97,7 +97,7 @@
         const top = (line.y - centre) * SCALE;
         if (top > height) break;
         if (top + line.height * SCALE < 0) continue;
-        items.push({ y: line.y, x: line.x, make: () => textNode(line, left, centre) });
+        items.push({ y: line.y, x: line.x, text: true, make: () => textNode(line, left, centre) });
       }
       const boxes = ctx.map.boxes;
       if (boxes.length) {
@@ -107,10 +107,18 @@
           const top = (box.y - centre) * SCALE;
           if (top > height) break;
           if (top + box.height * SCALE < 0) continue;
-          items.push({ y: box.y, x: box.x, make: () => graphicNode(box, left, centre) });
+          items.push({ y: box.y, x: box.x, text: false, make: () => graphicNode(box, left, centre) });
         }
       }
-      items.sort((a, b) => a.y - b.y || a.x - b.x);
+      // Graphics behind text, then document order within each.
+      //
+      // A cloned graphic can be a whole container -- a table header cell that
+      // carries a sort arrow is cloned at the cell's full size -- so if it is
+      // appended after the runs inside it, it paints over them. A page's
+      // graphics sit behind its text, so painting them first is both correct
+      // and what keeps a decorative cell from swallowing its own label.
+      const rank = (it) => (it.text ? 1 : 0);
+      items.sort((a, b) => rank(a) - rank(b) || a.y - b.y || a.x - b.x);
 
       const frag = document.createDocumentFragment();
       for (const item of items) {
@@ -149,12 +157,42 @@
       place(el, (line.x - left) * SCALE, (line.y - centre) * SCALE, 0, 0);
       el.style.color = line.color;
       el.style.fontFamily = line.family;
-      el.style.fontSize = `${Math.max(1, Math.round(line.fontSize * SCALE))}px`;
+      // Weight and style as the page specified them. A boolean "is bold" is not
+      // enough: 600 is not 700, and the two have different advance widths.
+      el.style.fontWeight = line.fontWeight;
+      el.style.fontStyle = line.fontStyle;
+      // Shaping. Without these the preview's advance widths differ slightly
+      // from the page's and two runs on one line drift into each other.
+      el.style.letterSpacing = line.letterSpacing;
+      el.style.wordSpacing = line.wordSpacing;
+      el.style.textTransform = line.textTransform;
+      el.style.fontStretch = line.fontStretch;
+      el.style.fontKerning = line.fontKerning;
+      el.style.fontVariant = line.fontVariant;
+      el.style.fontFeatureSettings = line.fontFeatureSettings;
+      // Not rounded. A font size's advance widths are not linear in it, so
+      // rounding 10.5px up to 11px makes a run about 5% too wide and two runs
+      // on one line drift into each other -- which is exactly the 3px
+      // collision between "macOS Catalina" and " or later" on Wikipedia.
+      // CSS accepts fractional pixels; there is nothing to round for.
+      el.style.fontSize = `${Math.max(1, line.fontSize * SCALE)}px`;
       // The page's own line box, so the text sits in the middle of it exactly
       // as it does on the page rather than hanging from the top.
-      el.style.lineHeight = `${Math.max(1, Math.round(line.height * SCALE))}px`;
-      if (line.bold) el.style.fontWeight = "600";
-      if (line.italic) el.style.fontStyle = "italic";
+      // The page's own line box, so the text sits in the middle of it exactly
+      // as it does on the page rather than hanging from the top -- but clamped
+      // to something a single line can actually occupy.
+      //
+      // The clamp is not defensive decoration. A text node's rect is its
+      // *inline content box*, which for text inside a tall or absolutely
+      // positioned wrapper can be far larger than the line it sits on.
+      // Wikipedia's "Toggle Platform availability" measured 51px for one line,
+      // so its glyphs were centred in a box 38px tall and floated over the six
+      // table-of-contents entries below it. That is the overlapping text in the
+      // report: not a placement error, but a box that cannot contain what it is
+      // holding. A line box is never more than about 1.25x the font size for
+      // the text that fills it, so anything larger is that wrapper.
+      el.style.lineHeight =
+        `${Math.max(1, Math.min(line.height, line.fontSize * 1.25) * SCALE)}px`;
       return el;
     }
 

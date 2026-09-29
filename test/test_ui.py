@@ -257,6 +257,37 @@ def main():
             check("site add-form present", d["hasAddForm"])
             check("links present", d["hasLinks"] >= 4, f"n={d['hasLinks']}")
 
+            # The point of the settings page: a real ScrollPeek on it, so a
+            # change can be seen landing without leaving. Checked by moving a
+            # control and looking for the bar to move with it.
+            print("\nlive ScrollPeek on the settings page")
+            r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
+                const rail = document.querySelector(".vugluscr .minimap");
+                return {mounted: !!rail,
+                        width: rail ? Math.round(rail.getBoundingClientRect().width) : 0,
+                        hasMap: !!document.querySelector(".scrollpeak-map")};
+            """, "args": []})
+            live = r.get("value", r)
+            check("a real rail is mounted here", live["mounted"], str(live))
+            check("and it has a minimap, not just a track", live["hasMap"])
+            check("it is using the default width", live["width"] == 60,
+                  f"{live['width']}px")
+
+            m.cmd("WebDriver:ExecuteAsyncScript", {"script": r"""
+                const done = arguments[arguments.length - 1];
+                const el = document.getElementById("minimapWidth");
+                el.value = "120";
+                el.dispatchEvent(new Event("change", {bubbles: true}));
+                setTimeout(done, 300);
+            """, "args": [], "scriptTimeout": 20000})
+            r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
+                const rail = document.querySelector(".vugluscr .minimap");
+                return rail ? Math.round(rail.getBoundingClientRect().width) : 0;
+            """, "args": []})
+            moved = r.get("value", r)
+            check("the bar moves when the setting does", moved == 120,
+                  f"{live['width']}px -> {moved}px")
+
             m.cmd("WebDriver:ExecuteAsyncScript",
                   {"script": ACT,
                    "args": ["addsite", "https://Example.COM/some/path?x=1"],

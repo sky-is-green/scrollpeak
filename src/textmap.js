@@ -33,6 +33,14 @@
     parseRgb, resolveColor, ensureContrast, withAlpha, resolveStripBackground,
   } = globalThis.ScrollPeekColour;
 
+  /**
+   * Memo of element -> is it out of the document's flow.
+   *
+   * Per document rather than per TextMap: the answer depends only on the page,
+   * and a rebuild must not pay for it twice.
+   */
+  const STUCK = new Map();
+
   // Kate: s_lineWidth, s_pixelMargin, s_linePixelIncLimit
   const S_LINE_WIDTH = 100;
   const S_PIXEL_MARGIN = 8;
@@ -178,7 +186,15 @@
             color: style.color,
             family: style.family,
             fontSize: style.fontSize,
-            bold: style.bold,
+            fontWeight: style.fontWeight,
+            fontStyle: style.fontStyle,
+            letterSpacing: style.letterSpacing,
+            wordSpacing: style.wordSpacing,
+            textTransform: style.textTransform,
+            fontStretch: style.fontStretch,
+            fontKerning: style.fontKerning,
+            fontVariant: style.fontVariant,
+            fontFeatureSettings: style.fontFeatureSettings,
             italic: style.italic,
           });
         }
@@ -246,6 +262,9 @@
       const consider = (el) => {
         if (!el || seen.has(el)) return;
         if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) return;
+        // Same rule as the text pass: a fixed or sticky element has no
+        // document position, so a box for it would be placed at a guess.
+        if (this.#isStuck(el)) return;
         seen.add(el);
 
         const rects = Array.from(el.getClientRects()).filter(
@@ -297,6 +316,38 @@
       this._darkenAmount = darkenAmount == null ? 0.82 : Number(darkenAmount);
       this.theme = theme || null;
       this.resolveColours();
+    }
+
+    /**
+     * Is this element out of the document's flow?
+     *
+     * `position: fixed` and `position: sticky` both report a viewport-relative
+     * rect: fixed content does not scroll at all, and sticky content is
+     * reported where it is stuck rather than where it would flow. We convert
+     * rects to document coordinates by adding scrollY, so for either of them
+     * the result is a document position that is simply wrong -- and on a real
+     * site they pile up at that wrong position rather than spreading out.
+     *
+     * Wikipedia's sticky header, page tools and table-of-contents toggle do
+     * exactly this: "Features", "History", "Learn to edit", "What links here"
+     * and "Toggle Platform availability" all landed in the preview at
+     * x = -138, over the article's own text. That is the overlapping text in
+     * the report. Kate's minimap has no analogue of any of this, because a
+     * text editor's document contains no fixed UI.
+     *
+     * So they are left out: their document position is unknowable from here,
+     * and a wrong position is worse than no position.
+     */
+    #isStuck(el) {
+      for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+        const hit = STUCK.get(n);
+        if (hit !== undefined) return hit;
+        const pos = getComputedStyle(n).position;
+        const stuck = pos === "fixed" || pos === "sticky";
+        STUCK.set(n, stuck);
+        if (stuck) return true;
+      }
+      return false;
     }
 
     /**
@@ -430,7 +481,7 @@
       if (hit !== undefined) return hit;
 
       const cs = getComputedStyle(parent);
-      if (cs.display === "none") {
+      if (cs.display === "none" || this.#isStuck(parent)) {
         cache.set(parent, null);
         return null;
       }
@@ -447,16 +498,18 @@
             color: cs.color,
             family: cs.fontFamily,
             fontSize: size,
-            bold: false,
-            italic: false,
+            fontWeight: cs.fontWeight,
+            fontStyle: cs.fontStyle,
+            ...SHAPING(cs),
             preserve,
           }
         : {
             color: cs.color,
             family: cs.fontFamily,
             fontSize: size,
-            bold: parseInt(cs.fontWeight, 10) >= 600,
-            italic: cs.fontStyle === "italic" || cs.fontStyle === "oblique",
+            fontWeight: cs.fontWeight,
+            fontStyle: cs.fontStyle,
+            ...SHAPING(cs),
             preserve,
           };
       cache.set(parent, style);
@@ -737,6 +790,25 @@
   }
 
   /**
+   * The properties that change a run's advance widths.
+   *
+   * The preview renders at 0.75 scale in the same font, so its widths must
+   * match the page's or two runs on one line drift into each other. These are
+   * the ones that move them.
+   */
+  function SHAPING(cs) {
+    return {
+      letterSpacing: cs.letterSpacing,
+      wordSpacing: cs.wordSpacing,
+      textTransform: cs.textTransform,
+      fontStretch: cs.fontStretch,
+      fontKerning: cs.fontKerning,
+      fontVariant: cs.fontVariant,
+      fontFeatureSettings: cs.fontFeatureSettings,
+    };
+  }
+
+  /**
    * The slice of a text node as the browser actually renders it.
    *
    * An HTML text node still holds the newlines and runs of spaces from the
@@ -779,7 +851,7 @@
   }
 
   function renderedText(slice) {
-    return slice.replace(/\s+/g, " ").trim();
+    return slice.replace(/\s+/g, " ").replace(/ +$/, "");
   }
 
   globalThis.ScrollPeekTextMap = { TextMap, REBUILD_DELAY_MS, S_PIXEL_MARGIN };

@@ -51,7 +51,37 @@ async function load() {
   wireSiteForm();
   wireLinks();
   renderSites(settings.disabledSites || []);
+  mountPreview(settings);
 }
+
+/**
+ * A working ScrollPeek on this very page.
+ *
+ * Every control above moves it, so "did that setting land?" is answered by
+ * looking to the right instead of by opening another tab and guessing. Same
+ * code path as a real page, which is the point: a preview built from anything
+ * else would be able to disagree with what a page gets.
+ *
+ * Re-mounted rather than patched, because a settings change re-enters the same
+ * code the content script uses, and that is the path worth exercising.
+ */
+function mountPreview(settings) {
+  if (!globalThis.Vugluscr?.Scrollbar || !globalThis.ScrollPeekRail) return;
+
+  teardownPreview?.();
+
+  const ctx = globalThis.ScrollPeekRail.mount(settings, null);
+  if (!ctx) return;
+
+  const magnifier = globalThis.ScrollPeekMagnifier.mount(ctx, settings);
+  teardownPreview = () => {
+    magnifier?.teardown();
+    ctx.teardown();
+    teardownPreview = null;
+  };
+}
+
+let teardownPreview = null;
 
 /**
  * Add a host to the exclusion list.
@@ -217,7 +247,13 @@ function wireLinks() {
  * content scripts exist.
  */
 async function persist(patch) {
-  await browser.runtime.sendMessage({ type: "scrollpeak:setSetting", patch });
+  const next = await browser.runtime.sendMessage({
+    type: "scrollpeak:setSetting",
+    patch,
+  });
+  // The whole point of the live bar: the change is visible on this page, so
+  // re-mount it with what was actually written.
+  mountPreview(next || {});
 }
 
 function renderSites(sites) {

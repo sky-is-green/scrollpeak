@@ -72,31 +72,29 @@
         <span>Hide until I scroll or approach</span>
       </label>
 
-      <label class="colour">
-        <span class="colour__label">Strip colour</span>
-        <input type="color" id="mapBackground" />
-        <button type="button" class="link" id="mapBackground-reset">Auto</button>
-      </label>
-
-      <label class="colour">
-        <span class="colour__label">Mark colour</span>
-        <input type="color" id="markColour" />
-        <button type="button" class="link" id="markColour-reset">Auto</button>
-      </label>
-
       <footer class="foot">
-        <button type="button" class="link" id="open-options">All settings</button>
-        <span class="foot__sites" id="site-count"></span>
-        <nav class="foot__links">
-          <button type="button" class="link" data-url="https://github.com/sky-is-green/scrollpeak">Source</button>
-          <button type="button" class="link" data-url="https://kate-editor.org">Kate</button>
-          <button type="button" class="link" data-url="https://github.com/sky-is-green/scrollpeak/issues">Report</button>
+        <button type="button" class="foot__main" id="open-options">
+          All settings
+        </button>
+
+        <nav class="foot__links" aria-label="About ScrollPeek">
+          <button type="button" class="link" data-url="https://github.com/sky-is-green/scrollpeak"
+                  title="The source code for this extension, on GitHub">
+            Source
+          </button>
+          <button type="button" class="link" data-url="https://kate-editor.org"
+                  title="Kate, the editor this minimap is a port of — the original lives in its scrollbar">
+            Kate
+          </button>
+          <button type="button" class="link" data-url="https://github.com/sky-is-green/scrollpeak/issues"
+                  title="Report a bug or ask for something, on GitHub">
+            Report
+          </button>
         </nav>
+
+        <p class="foot__sites" id="site-count"></p>
       </footer>
     </main>
-    <!-- Same colour maths the content script runs, so these swatches show the
-         colour the strip will actually be. -->
-    <script src="../colour.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

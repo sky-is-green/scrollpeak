@@ -211,27 +211,55 @@ body {
 
 /* ----------------------------------------------------------------- footer */
 
+/* The one thing you come here for beyond the toggles. It is the largest
+ * control in the panel and sits centred above the reference links, because it
+ * was previously the same size as them and one of four grey words in a row. */
 .foot {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 7px;
-  padding-top: 8px;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 9px;
+  padding-top: 9px;
   border-top: 1px solid var(--border);
 }
 
+.foot__main {
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.foot__main:hover {
+  filter: brightness(1.12);
+}
+
+.foot__main:active {
+  filter: brightness(0.94);
+}
+
+/* Reference links, under the button and deliberately smaller than it. */
+.foot__links {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
 .foot__sites {
+  margin: 0;
   font-size: 10px;
   color: var(--muted);
+  text-align: center;
 }
 
 .foot__sites:empty {
   display: none;
-}
-
-.foot__links {
-  display: flex;
-  gap: 10px;
 }
 
 .link {
@@ -250,23 +278,3 @@ body {
   text-decoration: underline;
 }
 
-.colour {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-}
-
-.colour__label {
-  flex: 1;
-}
-
-.colour input[type="color"] {
-  width: 34px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: none;
-  cursor: pointer;
-}
