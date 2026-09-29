@@ -70,6 +70,9 @@
     popup.setAttribute("aria-hidden", "true");
     // The preview must never intercept a click meant for the page beneath.
     popup.style.pointerEvents = "none";
+    // Anchored at the viewport's origin and moved by transform; see position().
+    popup.style.left = "0";
+    popup.style.top = "0";
     document.body.appendChild(popup);
 
     const stage = document.createElement("div");
@@ -77,6 +80,7 @@
     popup.appendChild(stage);
 
     let timer = null;
+    let frame = null;
     let visible = false;
     // Whether the preview has been created. Mirrors Kate's m_textPreview,
     // which is allocated on first show and then reused.
@@ -88,6 +92,29 @@
     let page = null;
     let builtAt = -1;
     let buildMs = 0;
+    let nodeCount = 0;
+
+    // The frame's size and the stage's, measured when they change rather than
+    // when the pointer moves. Reading clientWidth after writing the popup's
+    // width forces the browser to lay the whole popup out again -- and the
+    // popup holds the clone, which is the entire page. Doing that on every
+    // pointer event is what made the preview lag behind a fast cursor.
+    let popupW = 0;
+    let popupH = 0;
+    let stageW = 0;
+    let stageH = 0;
+
+    function measure() {
+      popupW = Math.round(window.innerWidth * WIDTH_FRACTION);
+      popupH = Math.round(window.innerHeight * HEIGHT_FRACTION);
+      popup.style.width = `${popupW}px`;
+      popup.style.height = `${popupH}px`;
+      // One read, once, for both of them.
+      stageW = stage.clientWidth || popupW;
+      stageH = stage.clientHeight || popupH;
+    }
+    measure();
+    window.addEventListener("resize", measure);
 
     function hide() {
       clearTimeout(timer);
@@ -154,6 +181,7 @@
         if (getComputedStyle(el).position === "fixed") el.style.display = "none";
       }
       buildMs = Math.round(performance.now() - t0);
+      nodeCount = wrap.querySelectorAll("*").length;
 
       page = wrap;
       builtAt = ctx.map.revision;
@@ -195,19 +223,15 @@
 
     /** Rebuild the preview for the document offset under the cursor. */
     function paint(docY) {
-      const width = Math.round(window.innerWidth * WIDTH_FRACTION);
-      const height = Math.round(window.innerHeight * HEIGHT_FRACTION);
-      popup.style.width = `${width}px`;
-      popup.style.height = `${height}px`;
-
       if (builtAt !== ctx.map.revision || !page) {
         if (!buildPage()) return;
       }
 
-      const stageW = stage.clientWidth || width;
-      const stageH = stage.clientHeight || height;
-      const doc = document.scrollingElement || document.documentElement;
-      const docHeight = Math.max(1, doc.scrollHeight);
+      // Everything below is either a cached number or a transform. Nothing
+      // here writes a layout-affecting property and then reads one back, and
+      // nothing queries the clone -- which is the whole page, and walking it
+      // per pointer move cost more than the layout did.
+      const docHeight = Math.max(1, ctx.map.docHeight);
 
       // Kate's preview starts at xStart = 0 -- the left edge of the document,
       // because an editor's document has no left margin. A page does: a fixed
@@ -230,30 +254,45 @@
 
       // Published for the hover-tracking and alignment tests, and for debugging
       // a site that previews oddly.
+      const lineHeight = Math.round(ctx.map.medianLineHeight() || 18);
       popup.dataset.dbg = JSON.stringify({
         docY: Math.round(docY),
         centre: Math.round(ty + stageH / (2 * SCALE)),
-        lineHeight: Math.round(ctx.map.medianLineHeight() || 18),
-        rows: Math.max(1, Math.floor(stageH / ((ctx.map.medianLineHeight() || 18) * SCALE))),
-        items: page.querySelectorAll("*").length,
+        lineHeight,
+        rows: Math.max(1, Math.floor(stageH / (lineHeight * SCALE))),
+        items: nodeCount,
         lines: ctx.map.lines.length,
         boxes: buildMs,           // milliseconds spent building the clone
-        nodes: page.querySelectorAll("*").length,
+        nodes: nodeCount,
         docHeight: Math.round(docHeight),
       });
     }
 
+    /**
+     * Put the preview beside the scrollbar, on the hovered line.
+     *
+     * Kate places the preview immediately left of the scrollbar and clamps it
+     * vertically so it never leaves the widget.
+     *
+     * By transform rather than by left/top. left and top affect layout, so
+     * writing them here would invalidate the document's layout on every
+     * pointer move and leave the next move to pay for it. A transform is a
+     * paint-time property: the browser can move the popup without re-laying
+     * out the page inside it.
+     */
     function position(docY) {
       const stripRect = ctx.strip.getBoundingClientRect();
-      // Kate places the preview immediately left of the scrollbar and clamps
-      // it vertically so it never leaves the widget.
-      const left = stripRect.left - popup.offsetWidth;
-      popup.style.left = `${Math.max(8, left)}px`;
+      const left = Math.max(8, stripRect.left - popupW);
 
-      const onStrip = stripRect.top + (docY / ctx.map.docHeight) * stripRect.height;
-      const top = onStrip - popup.offsetHeight / 2;
-      const maxTop = Math.max(stripRect.top, stripRect.bottom - popup.offsetHeight);
-      popup.style.top = `${clamp(top, stripRect.top, maxTop)}px`;
+      const onStrip = stripRect.top + (docY / docHeight()) * stripRect.height;
+      const maxTop = Math.max(stripRect.top, stripRect.bottom - popupH);
+      const top = clamp(onStrip - popupH / 2, stripRect.top, maxTop);
+
+      popup.style.transform = `translate(${left}px, ${top}px)`;
+    }
+
+    function docHeight() {
+      return Math.max(1, ctx.map.docHeight);
     }
 
     function show(clientY) {
@@ -285,7 +324,16 @@
     function schedule(clientY) {
       latestY = clientY;
       if (created) {
-        show(clientY);
+        // One paint per frame. A pointer moving quickly fires pointermove more
+        // than once per frame, and there is nothing to gain from painting a
+        // position the next event is about to replace -- the frame the browser
+        // is going to draw would never have shown it.
+        if (frame === null) {
+          frame = requestAnimationFrame(() => {
+            frame = null;
+            show(latestY);
+          });
+        }
         return;
       }
       if (timer === null) {
@@ -321,7 +369,10 @@
       },
       teardown() {
         hide();
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
         window.removeEventListener("blur", hide);
+        window.removeEventListener("resize", measure);
         popup.remove();
         page = null;
       },
