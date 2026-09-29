@@ -25,8 +25,8 @@ this is a second, separate instance.
 Temporary add-ons do not survive a browser restart. Re-run this script after
 you restart Firefox.
 
-To install it permanently instead, submit to addons.mozilla.org as an unlisted
-add-on: that is signed automatically and is not human reviewed.
+To install it permanently instead, submit to addons.mozilla.org: a listed
+version goes through review, an unlisted one is signed for personal use.
 """
 import json
 import os

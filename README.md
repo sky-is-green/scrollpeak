@@ -30,7 +30,7 @@ get subtly wrong:
 |---|---|
 | `s_lineWidth` 100, `s_pixelMargin` 8, `s_linePixelIncLimit` 6 | same constants |
 | `charIncrement = pixmapLineCount / grooveHeight`, capped at 6, then escalating to `lineIncrement` | `buildPixmap()` |
-| `m_miniMapWidth(40)` | default strip width, 40px |
+| `m_miniMapWidth(40)` | default strip width, 60px — `KateViewConfig` overrides the constructor, see Settings |
 | `m_updateTimer.setInterval(300)` | `REBUILD_DELAY_MS` |
 | `m_delayTextPreviewTimer.setInterval(250)`, first show only | preview debounce |
 | `setScaleFactor(0.75)`, half width by fifth height, centred, clamped | `magnifier.js` |
@@ -41,6 +41,15 @@ get subtly wrong:
 Kate caches the pixmap and rebuilds it on a timer; scrolling only repaints.
 That split is preserved, because building the map is the expensive half and
 stretching it is not.
+
+The one deliberate deviation is the struck-through line in the table. Kate
+sizes the map's *scrollable* range as `min(grooveHeight, pixmapHeight * 2) - 2`,
+so a pixmap shorter than half the groove is drawn doubled and the document
+scrolls through that part only. On the web the clamp always bites — on the
+fixture article the map was being squeezed into 124px of a 682px groove, 18% of
+the strip — and it leaves the map, the thumb and the preview in three different
+coordinate systems. The map spans the groove instead; the arithmetic and the
+measurement are at the point of use in `src/textmap.js` (`paint()`).
 
 **The map is a raster of the page's text, not a schematic of its elements.**
 Kate draws one pixel per character, coloured by that character's own
@@ -59,6 +68,13 @@ characters, gets it exactly — O(log n) rect queries instead of O(n).
 `test/verify_line_split.py` checks that against an oracle that measures every
 character: 14 of 14 wrapped nodes exact, 2708 characters.
 
+The text itself is the text the browser rendered: a source file that is
+hard-wrapped in the HTML collapses its newlines to the single spaces the
+browser drew, and `renderedText()` puts the line back into that shape before
+characters are sliced onto it. Whitespace that is genuinely significant
+(`<pre>`, `white-space: pre*`) is detected per element from its own computed
+value rather than guessed.
+
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
 **The preview is not a zoom of the map.** Kate's `KateTextPreview` renders the
@@ -68,95 +84,61 @@ centred on the hovered line and debounced by 250ms so that sweeping the mouse
 across the scrollbar does not strobe it. `src/magnifier.js` reproduces all of
 that.
 
-**The preview is DOM, not a canvas.** Kate draws the preview with
-`paintTextLine`, which draws text lines, because in a text editor text is the
-whole of the content. A web page is not text: a 16px icon beside a label is
-often the only thing that says what a row is. So the preview shows the page's
-graphics too — as cloned elements positioned in a stage, not as pixels.
+**How the preview shows the content is the part that took longest to get
+right.** Kate's preview calls `paintTextLine` for each line in the range: it
+does not lay the text out, it asks the renderer to draw the line, and the
+renderer is the thing that knows where every character goes. In a text editor
+that is a complete answer, because a text editor's document *is* text. A web
+page is not: a table cell's colour comes from its row, an icon's fill from
+`currentColor`, text flows around a float, a container clips its children.
 
-Cloning into the document is the point. A serialised inline `<svg>` gets none
-of the page's stylesheet, so the `fill: currentColor` that most icon systems
-use comes out blank; a clone stays in the page's cascade and keeps working.
-Images and canvas are cloned too, with the canvas's pixels copied across, since
-a clone of one is blank. Clones have their `id`s stripped, or the page's own
-`getElementById` would start matching the preview.
+This was first ported by decomposing the page — collecting text runs, images,
+canvases and backgrounds and re-emitting them at measured coordinates — and the
+decomposition was the bug. Every relationship the layout engine provides is
+lost, and each fix exposed the next symptom, which is the signal that the
+approach is wrong rather than incomplete.
 
-**A clone carries no DOM text.** The text pass already drew every line box, at
-its own position and in its own colour, so a clone that keeps its text draws it
-a second time on top. Not a theoretical problem: on Wikipedia's usage-share
-table **778 of the links carry a `background-image`** (15 media elements, 919
-background-image elements, 778 of them `<a>`), so every one was cloned whole
-and every one of their labels appeared twice, a few pixels apart.
+The right analogue of "ask the renderer" on the web is to let the browser
+render it. **The preview is a clone of the page's content**, moved into the
+magnifier with a CSS transform: translated so the hovered region is in view,
+scaled by 0.75. Same markup, same stylesheet, same layout engine, so there is
+nothing to keep in sync and no way for it to disagree with the page. The
+transform is also what makes it affordable: a transform does not reflow, so
+following the pointer is a compositor operation, not a layout one.
 
-Stripping DOM text is the right cut rather than refusing to clone those
-elements, because it separates the two things a clone can carry:
+Three things the clone needs:
 
-- DOM text, which the text pass owns — drawn once, in the right place, and
-  adjusted to contrast with the strip;
-- everything else the element paints: a background-image, a border, a box
-  shadow, and above all CSS-generated content from `::before`/`::after`, which
-  is not a text node at all and so the text pass *cannot* see it. A table's
-  sort arrow is exactly that; only a clone reproduces it.
+- **Our UI is removed from it**, or the rail and the preview would be cloned
+  into themselves; `id`s are stripped, or the page's own `getElementById` would
+  start matching the preview; `canvas` pixels and `input`/`textarea`/`select`
+  state are copied, because `cloneNode` does not carry them.
+- **`position: fixed` elements are hidden.** A cookie banner or sticky toolbar
+  has no document position — it is wherever the viewport is — so left in, it
+  would sit pinned over one arbitrary part of a preview of the whole page.
+  Elements that are merely `sticky` stay where they flow.
+- **The clone is pinned to the page's layout width**, so percentage widths,
+  tables and floats resolve exactly as they do on the page — while media queries
+  and viewport units still evaluate against the same viewport, because the clone
+  is in this document.
 
-`test/verify_graphics.py` covers both directions: a labelled background-image
-element must be cloned with empty text and its label drawn once, and a
-`::before` must survive. Reinstaining the old behaviour fails with
-`['SPAN', 'SPAN']` — the label, twice.
+Rebuilding the clone is the expensive half — about 130ms for a 13,500-node page
+— so it happens on the map's own revision and not while the pointer is moving: a
+clone a moment out of date is a much smaller lie than a preview that cannot keep
+up with the cursor. The first build starts on pointer entry, inside Kate's 250ms
+first-appearance delay.
 
-Two things the DOM form needs that a canvas did not:
+`test/verify_preview_lines.py` checks the strong claim directly: it pairs the
+page's elements with the clone's and asserts that the *distance* between any two
+of them is the page's own geometry scaled by 0.75 — offsets, not positions,
+because the transform deliberately translates. The worst error on the fixture
+is 0.01px for offsets and the same for sizes. It also samples strings and
+asserts each appears exactly once in the preview, which is the check that would
+have caught the old model's duplication directly: a reconstructed run and a
+cloned graphic drawing the same text, a few pixels apart.
 
-- **Every axis is scaled by 0.75**, not just the font size. Scaling only the
-  font leaves the line pitch at 1/0.75 of the page's, which reads as broken
-  spacing.
-- **A run's text has to be the text the browser rendered.** A text node keeps
-  the newlines from the HTML source, which the browser collapses to a space
-  when it lays the line out. The preview draws with `white-space: pre`, so a
-  surviving newline becomes a *real* line break: the run spills onto a second
-  line and collides with the run below it — which is what a hard-wrapped HTML
-  source does to every paragraph. `renderedText()` puts the slice back into the
-  shape the rects came from, except where whitespace is genuinely significant
-  (`<pre>`, `white-space: pre*`), which is detected per element from its own
-  computed value rather than guessed.
-
-**Nothing in the preview overlaps.** `test/verify_preview_lines.py` asserts it
-directly: no two rendered runs may overlap in both axes. It is checked because
-three separate things were wrong at once, and none of them was a coordinate
-error -- the collection and placement were verified line by line against the
-page's own document coordinates and were correct throughout.
-
-1. **Out-of-flow content has no document position.** `position: fixed` and
-   `position: sticky` report a viewport-relative rect, and we convert to
-   document coordinates by adding `scrollY`, so for either of them the result
-   is simply wrong -- and rather than spreading out, they pile up at that wrong
-   position. Wikipedia's sticky header, page tools and table-of-contents toggle
-   all landed together at `x = -138`, over the article's own text. They are
-   left out.
-2. **A text node's rect is its inline content box**, which for text inside a
-   tall or absolutely positioned wrapper can be far larger than the line it
-   sits on. Wikipedia's "Toggle Platform availability" measured 51px for one
-   line, so its glyphs were centred in a 38px box and floated over the six TOC
-   entries below. A line box is never more than about 1.25x the font size for
-   the text filling it, so the line height is clamped.
-3. **Advance widths are not linear in font size.** Rounding 14px x 0.75 = 10.5
-   up to 11px made every run about 5% too wide -- the 3px collision between
-   "macOS Catalina" and " or later". CSS takes fractional pixels. Weight and
-   style are passed through as values rather than as "is it bold", for the same
-   reason: 600 is not 700.
-
-Trimming a run's leading whitespace also pulled it back over the one before it.
-Trailing whitespace is noise and is dropped; leading whitespace is a real,
-visible space between two inline elements and is kept.
-
-Graphics are painted behind text, because a cloned graphic can be a whole
-container -- a table header cell carrying a sort arrow is cloned at the cell's
-full size -- and appended after the runs inside it it would paint over them.
-
-Measured on Wikipedia, overlapping pairs went 4 to 0 at the infobox and 6 to 0
-at the releases table, with the chart and the Firefox logo both rendering.
-
-The preview also has a 3x6px buffer inside its frame. Its coordinates are the
-page's own, so every pixel of padding is a pixel of the page pushed out of view
--- the point is only that the first run of text is not hard against the frame.
+The preview's frame is a 2px hairline. Its coordinates are the page's own, so
+every pixel of padding is a pixel of the page pushed out of view, and the page
+supplies its own margins.
 
 ## The settings page
 
@@ -170,9 +152,9 @@ magnifier, markers, width, minimap-only and peek -- and All settings, which is
 the largest thing in it. Colour is not in the popup: it belongs on the settings
 page, where the live bar shows what it does.
 
-`test/verify_preview_lines.py` asserts all of that against the page's own
-measured geometry, and each assertion has been checked against a deliberate
-reinstatement of the bug it exists for.
+`test/test_ui.py` drives the popup and the options page through a stubbed
+extension API; `test/test_settings.py` installs variants of the extension and
+checks that each setting changes what a real page gets.
 
 **We do not screenshot the page.** `tabs.captureVisibleTab` accepts a `rect`
 in page coordinates, so off-screen capture is nominally possible — but
@@ -192,7 +174,8 @@ src/
   content.js         lifecycle: mount, and re-mount when settings change
   textmap.js         Kate's updatePixmap(), on a canvas
   rail.js            mounts the rail, installs our map
-  magnifier.js       Kate's KateTextPreview(), on a canvas
+  magnifier.js       the hover preview: the page's content cloned under a
+                     CSS transform
   content.css        theming, via vugluscr's own custom properties
   vendor/            vugluscr 2.0.0, vendored (MIT)
 ```
@@ -217,6 +200,9 @@ extensions — `xpinstall.signatures.required=false` is silently ignored outside
 Nightly, Developer Edition and ESR. What Release does accept is a **temporary
 add-on**, which needs no Mozilla account and no signing.
 
+ScrollPeek needs **Firefox 146 or later**; the manifest enforces it, and the
+reason is in [Status](#status).
+
 The quick way:
 
 ```sh
@@ -236,9 +222,10 @@ The manual way, in your normal browser:
 2. **Load Temporary Add-on…**
 3. Pick `src/manifest.json`
 
-To install it permanently, submit to [addons.mozilla.org](https://addons.mozilla.org)
-as an **unlisted** add-on. That is signed automatically and is not human
-reviewed, which is the right route once the UI is settled.
+To install it permanently, submit to [addons.mozilla.org](https://addons.mozilla.org).
+An **unlisted** submission is signed for your own use without a listing
+review; a **listed** one is public and goes through review. Either way the
+add-on is signed, which is what a Release build requires.
 
 ## Settings
 
@@ -345,19 +332,6 @@ is possible:
 `browser.theme.onUpdated` re-derives and repaints in place, so changing theme
 does not reload the page. `prefers-color-scheme` is watched for the same reason.
 
-Two things measured rather than assumed, because they decide how much of this
-is possible:
-
-- **`theme.getCurrent()` is `{}` unless a theme is installed.** With the default
-  theme it returns no colours at all, so there is nothing to read. The fallback
-  to the page is what covers that case.
-- **A content script cannot see Firefox's own widget colours.** `ButtonFace`,
-  `AccentColor` and `-moz-Dialog` all resolve in a page, and they resolve to
-  Firefox's *light* palette — measured identical with
-  `ui.systemUsesDarkTheme` set to 1, while `prefers-color-scheme` correctly
-  reported dark. So `prefers-color-scheme` is the only live signal about the
-  machine a page can get, and it is all the third step above uses.
-
 `src/colour.js` holds that arithmetic and is loaded by the content script *and*
 by the options page and popup, so the swatch in the settings is the colour the
 strip will actually be rather than a placeholder.
@@ -399,34 +373,54 @@ once the pointer stopped. It fires a burst of moves 16ms apart and checks each
 one lands on its own document offset. Reverting the fix makes three of its
 checks fail, so it is not a test that passes by accident.
 
-Loads the extension into a throwaway Firefox profile as a temporary add-on and
-drives it over a real page with Marionette, asserting that the rail mounts, that
-the map painted the page's own colours, that the strip is still hit-testable,
-that the preview appears at the right size and position, and that clicking
-scrolls. Exits non-zero on failure.
+`test/smoke.py` loads the extension into a throwaway Firefox profile as a
+temporary add-on and drives it over a real page with Marionette, asserting that
+the rail mounts, that the map painted the page's own colours, that the strip is
+still hit-testable, that the preview appears at the right size and position,
+and that clicking scrolls. Exits non-zero on failure.
 
 ## Status
 
-Working end to end, and verified against live sites. The map, the preview,
-click-to-jump and drag are in place; the smoke test covers them, and
-`test/probe_sites.py` confirms the map renders on GitHub (9×, 20 colours),
-Wikipedia (73×, 13,590 DOM nodes) and a 20,254-node W3C spec without breaking
-the page layout.
+**Functionally complete; in release clean-up.** The map, the preview,
+click-to-jump, drag, peek, minimap-only, the settings pages and the
+theme-derived colours all work, and all nine test suites pass. `probe_sites.py`
+additionally drives GitHub, Wikipedia, MDN, Hacker News and a 20,254-node W3C
+spec and reports map scale, painted pixels, console errors and page-layout
+damage.
 
-Known gaps, in rough priority order:
+The numbers that look like boasts in this README are measurements, checked
+against the page rather than against themselves: the preview reproduces the
+page's element offsets and sizes to 0.01px and every sampled string in it
+appears exactly once; a scripted cursor sweep down the rail holds p99 17.1ms,
+with the single frame over 100ms on arrival rather than during the sweep; and
+the map leaks no graphics (red = 0, green = 0 in a 60px strip).
 
-- **A page is not linear text.** Kate lays out a buffer of lines; a page has
-  grid and flex layouts where two elements share a row, and a line box can
-  report a `y` far outside the document (Wikipedia's infobox reports
-  y ≈ -100000 for content scrolled out of an inner container). Both are
-  handled — out-of-document boxes are dropped, and the preview declutters each
-  row left to right — but a page with heavy multi-column layout will preview
-  less completely than a text file would.
-- SPA route changes and lazily-mounted content are caught by a debounced
-  `MutationObserver`, which fires constantly on sites like GitHub. It works,
-  but the debounce is a guess.
-- Only vertical page scroll. vugluscr can drive an inner scroller; we do not.
-- Untested on Firefox for Android, and on sites that virtualise their content.
+Known limits, in rough priority order:
+
+- **The map is a text raster, not a page schematic.** It is built from the
+  page's own line boxes, so images, borders and empty containers carry no
+  marks; that is Kate's model. A page with heavy grid or flex layout still maps
+  its text where the browser put it, and the preview is unaffected — the
+  preview is the page.
+- **The preview's first clone build is not free** (~130ms for a 13,500-node
+  page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
+  on the first hover of a page load; it is the one rough edge left in frame
+  pacing. Moving the build to idle time was tried and reverted: it moved the
+  cost rather than removing it.
+- **SPA route changes and lazily-mounted content** are caught by a
+  hard-debounced `MutationObserver`, which fires constantly on sites like
+  GitHub. It works, but the debounce is a guess rather than a measurement.
+- **Only the page's own vertical scroll.** vugluscr can drive an inner
+  scroller; ScrollPeek does not mount on one.
+- **Untested on Firefox for Android, and on sites that virtualise their
+  content.**
+
+The minimum version is **Firefox 146**, and it is not arbitrary. Manifest V3
+host permissions — without which content scripts are never injected — are not
+granted at install before Firefox 127, and the vendored vugluscr injects its
+structural CSS inside `@scope`, which Firefox shipped in 146. On anything older
+the extension either cannot inject or has no rail layout at all, so
+`strict_min_version` states the floor rather than hoping.
 
 ## Privacy
 

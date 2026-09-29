@@ -203,9 +203,9 @@ async function refreshAction() {
   await browser.action.setIcon({
     tabId: tab.id,
     path: on ? {
-      16: "icons/scrollpeak.svg", 32: "icons/scrollpeak.svg", 48: "icons/scrollpeak.svg",
+      16: "icons/scrollpeak-16.png", 32: "icons/scrollpeak-32.png", 48: "icons/scrollpeak-48.png",
     } : {
-      16: "icons/scrollpeak-off.svg", 32: "icons/scrollpeak-off.svg", 48: "icons/scrollpeak-off.svg",
+      16: "icons/scrollpeak-off-16.png", 32: "icons/scrollpeak-off-32.png", 48: "icons/scrollpeak-off-48.png",
     },
   });
 

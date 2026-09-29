@@ -149,14 +149,6 @@ html.vugluscr_embedded {
   background: #fff;
 }
 
-.scrollpeak-magnifier__line {
-  /* A run is exactly one line box, so it must never soft-wrap. */
-  white-space: pre;
-  /* line-height is set per line, from that line box's measured height, so the
-     text sits in the middle of the box as it does on the page. */
-  line-height: normal;
-}
-
 /* ------------------------------------------------- minimap-only, and peek
  *
  * Both are classes on <html>, set by rail.js, because they change the rail's

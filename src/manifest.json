@@ -5,15 +5,15 @@
   "description": "A scrollbar minimap. Hover the scrollbar to see the whole page, magnify a section, click to jump.",
   "homepage_url": "https://github.com/sky-is-green/scrollpeak",
   "icons": {
-    "48": "icons/scrollpeak.svg",
-    "96": "icons/scrollpeak.svg"
+    "16": "icons/scrollpeak-16.png",
+    "32": "icons/scrollpeak-32.png",
+    "48": "icons/scrollpeak-48.png",
+    "96": "icons/scrollpeak-96.png",
+    "128": "icons/scrollpeak-128.png"
   },
   "permissions": [
     "storage",
     "theme"
-  ],
-  "host_permissions": [
-    "<all_urls>"
   ],
   "background": {
     "scripts": [
@@ -44,8 +44,8 @@
     "default_title": "ScrollPeek",
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "16": "icons/scrollpeak.svg",
-      "32": "icons/scrollpeak.svg"
+      "16": "icons/scrollpeak-16.png",
+      "32": "icons/scrollpeak-32.png"
     }
   },
   "options_ui": {
@@ -55,7 +55,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "scrollpeak@sky-is-green.github.io",
-      "strict_min_version": "115.0"
+      "strict_min_version": "146.0"
     }
   }
 }

@@ -47,6 +47,13 @@ function readOffset() {
 const seen = [];
 const fracs = [0.20, 0.35, 0.50, 0.65, 0.80];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// The preview paints at most once per animation frame, so "the move landed"
+// means the next frame has run. Waiting a fixed 16ms instead assumes a frame
+// is never dropped, and a dropped frame under load makes two moves read the
+// same -- a flake, not a regression. Two frames, so the callback queued by
+// the move is certain to have run.
+const frame = () => new Promise(r =>
+  requestAnimationFrame(() => requestAnimationFrame(r)));
 
 (async () => {
   // Phase 1: arrive on the strip and wait out Kate's first-show delay. The
@@ -60,9 +67,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // pointer stopped.
   for (const f of fracs) {
     strip.dispatchEvent(new PointerEvent("pointermove", at(f)));
-    // A hand cannot move twice in one millisecond, so yield a frame between
-    // moves the way a real pointer does.
-    await sleep(16);
+    // One hand position per frame, the way a real pointer moves.
+    await frame();
     seen.push({ frac: f, docY: readOffset() });
   }
   done({ established, seen, stripTop: r.top, stripH: r.height });
