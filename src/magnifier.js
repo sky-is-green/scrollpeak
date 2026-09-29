@@ -216,9 +216,16 @@
       }
     }
 
-    const strip = ctx.strip;
-    strip.addEventListener("pointermove", (e) => schedule(e.clientY));
-    strip.addEventListener("pointerleave", hide);
+    // Listen on the whole rail, not just the minimap pane.
+    //
+    // In Kate the map *is* the scrollbar, so there is no other place for the
+    // pointer to be. vugluscr's rail is the map plus a separate track beside
+    // it, and both stretch to the same height, so hovering the track used to
+    // fire pointerleave on the map and kill the preview -- the one strip a
+    // user thinks of as "the scrollbar" was the part that did nothing.
+    const rail = ctx.rail.rail.domNode;
+    rail.addEventListener("pointermove", (e) => schedule(e.clientY));
+    rail.addEventListener("pointerleave", hide);
     // Kate hides the preview on WindowDeactivate; losing focus is the browser
     // equivalent, and also when a stale preview would be most misleading.
     window.addEventListener("blur", hide);

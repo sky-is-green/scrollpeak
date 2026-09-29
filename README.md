@@ -35,6 +35,7 @@ get subtly wrong:
 | `m_delayTextPreviewTimer.setInterval(250)`, first show only | preview debounce |
 | `setScaleFactor(0.75)`, half width by fifth height, centred, clamped | `magnifier.js` |
 | pixmap stretched to the strip; fade outside the viewport at alpha 110 | `paint()` |
+| ~~`docHeight = min(groove, pixmapHeight*2) - 2`~~ | **not ported — see below** |
 | `m_doc->lines() > 7500` skips highlighting | `SIMPLE_MODE_LINE_COUNT` |
 
 Kate caches the pixmap and rebuilds it on a timer; scrolling only repaints.
@@ -173,6 +174,7 @@ real setting.
 
 ```sh
 python3 test/smoke.py                 # map, preview, click-to-jump, hover
+python3 test/verify_alignment.py     # map, band, thumb and preview agree
 python3 test/verify_hover_tracking.py # the preview follows a moving pointer
 python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
 python3 test/test_settings.py         # every setting changes something

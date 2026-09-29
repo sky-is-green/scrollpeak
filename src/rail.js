@@ -66,6 +66,10 @@
     });
     strip.insertBefore(map.canvas, strip.firstChild);
 
+    // The fade is read off the real thumb, so the map and the scrollbar can
+    // never show the viewport in two different places.
+    map.setThumbEl(minimap.thumb?.domNode ?? null);
+
     let rebuildTimer = null;
 
     /** Kate's updatePixmap(), behind his 300ms single-shot timer. */

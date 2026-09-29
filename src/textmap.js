@@ -68,6 +68,14 @@
       this.lineIncrement = 1;
       this.background = "#ffffff";
       this.revision = 0;
+      // vugluscr's viewport thumb, read for the fade. Deriving the band from
+      // the thumb itself rather than recomputing its geometry means the two
+      // can never disagree.
+      this.thumbEl = null;
+    }
+
+    setThumbEl(el) {
+      this.thumbEl = el;
     }
 
     setSize(width, height) {
@@ -353,65 +361,110 @@
 
       const ctx = this.ctx;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
       const grooveHeight = this.height;
-      const pixmapH = this.pixmapLineCount;
 
-      // Kate: qMin(grooveRect.height(), pixmapHeight * 2) - 2 * docXMargin
-      const docHeight = Math.min(grooveHeight, pixmapH * 2) - 2 * DOC_X_MARGIN;
+      // The map always spans the full groove.
+      //
+      // Kate does not do this. It uses
+      //   docHeight = min(grooveHeight, pixmapHeight * 2) - 2
+      // so a document with few lines gets a short map occupying only the top
+      // of the groove. That is invisible in a text editor, where a file has
+      // thousands of lines and pixmapHeight lands near grooveHeight anyway --
+      // but Kate's own scrollbar slider spans the full groove while its map and
+      // its preview both use the compressed rect, so even there the two
+      // disagree whenever the clamp bites.
+      //
+      // On the web the clamp always bites. A 2200px article has about 60 line
+      // boxes, so the map was being squeezed into 124px of a 682px groove:
+      // the map, the fade band, the thumb and the preview's document offset
+      // were four different coordinate systems in one 60px widget. Filling the
+      // groove is what makes it a scrollbar minimap rather than a density
+      // sketch.
       const docTop = DOC_X_MARGIN;
-      const docWidth = this.width - DOC_X_MARGIN;
-      if (docHeight <= 0) {
-        ctx.clearRect(0, 0, this.width, this.height);
-        return;
-      }
+      const docHeight = grooveHeight - 2 * DOC_X_MARGIN;
 
-      // Kate's visibleStart / visibleEnd, over the scrollbar's own value and
-      // pageStep rather than the document's, so the highlight tracks the
-      // slider exactly.
-      const max = Math.max(this.docHeight - viewportHeight, 1);
-      const pageStep = viewportHeight;
-      const visibleStart = (scrollTop * docHeight) / (max + pageStep) + docTop + 0.5;
-      const visibleEnd = ((scrollTop + pageStep) * docHeight) / (max + pageStep) + docTop;
-      const visibleHeight = Math.max(1, visibleEnd - visibleStart);
+      // The band is read off the real thumb. vugluscr clamps the thumb to
+      // MIN_THUMB_HEIGHT = 20 so it stays grabbable, which Kate's formula has
+      // no equivalent of -- on a long page the two would differ by 10px of
+      // height. Reading the thumb is one rect per frame, and we are already
+      // repainting a canvas that costs far more than that.
+      const band = this.thumbBand(docTop, docHeight, scrollTop, viewportHeight);
+      this.lastBand = band;
+
+      // Where the map was actually drawn. The canvas is always full height --
+      // it is filled with the page background first -- so "does the map reach
+      // the bottom" cannot be answered by looking at the canvas. Published so
+      // the alignment test can assert the drawn rect instead.
+      const rectKey = `${Math.round(docTop)}:${Math.round(docHeight)}`;
+      if (rectKey !== this._rectKey) {
+        this._rectKey = rectKey;
+        this.canvas.dataset.docRect = JSON.stringify({
+          top: Math.round(docTop), height: Math.round(docHeight),
+        });
+      }
+      // Published for the alignment test and for debugging a site where the
+      // indicators look wrong. Only touched when it moves, because paint()
+      // runs on every scroll frame.
+      const key = `${Math.round(band.top)}:${Math.round(band.height)}`;
+      if (key !== this._bandKey) {
+        this._bandKey = key;
+        this.canvas.dataset.band = JSON.stringify({
+          top: Math.round(band.top), height: Math.round(band.height),
+        });
+      }
 
       // The page background, so a short document does not show the strip's
       // own colour underneath. Kate: painter.drawRect(grooveRect).
       ctx.fillStyle = this.background;
       ctx.fillRect(0, 0, this.width, grooveHeight);
 
-      // Stretch the pixmap. Kate draws the s_pixelMargin column separately so
-      // the left gutter (modified-line marks) is not stretched; we have no
-      // such column, so the whole pixmap goes across.
+      // Stretch the pixmap over the whole groove.
       const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
       if (contentW > 0) {
-        ctx.imageSmoothingEnabled =
-          grooveHeight < pixmapH ? true : grooveHeight < pixmapH;
         ctx.drawImage(
           this.pixmap,
-          S_PIXEL_MARGIN, 0, contentW, pixmapH,
-          DOC_X_MARGIN, docTop, docWidth, docHeight,
+          S_PIXEL_MARGIN, 0, contentW, this.pixmapLineCount,
+          DOC_X_MARGIN, docTop, this.width - DOC_X_MARGIN, docHeight,
         );
-        ctx.imageSmoothingEnabled = false;
       }
 
       // Fade what is not currently visible. Kate: backgroundColor at alpha 110.
       const fade = withAlpha(this.background, 110);
       ctx.fillStyle = fade;
-      ctx.fillRect(0, 0, this.width, visibleStart);
-      ctx.fillRect(0, visibleStart + visibleHeight, this.width,
-        grooveHeight - visibleStart - visibleHeight);
-
-      // Delimit the end of the document, if there is room below it.
-      const endY = docTop + docHeight;
-      if (endY + 2 < grooveHeight) {
-        ctx.fillStyle = withAlpha(this.foregroundColor(), 30);
-        ctx.fillRect(1, endY + 2, this.width - 1, 1);
+      if (band.top > 0) ctx.fillRect(0, 0, this.width, band.top);
+      if (band.top + band.height < grooveHeight) {
+        ctx.fillRect(0, band.top + band.height, this.width,
+          grooveHeight - band.top - band.height);
       }
 
       // Kate's thin line limiting the scrollbar.
       ctx.fillStyle = withAlpha(this.foregroundColor(), 10);
       ctx.fillRect(0, 0, 1, grooveHeight);
+
+      // Kate also draws a delimiter at the bottom of the map, which only has
+      // somewhere to go because his map can be shorter than the groove. Ours
+      // always reaches the bottom, so there is nothing to delimit.
+    }
+
+    /** The viewport band, taken from the thumb's real position. */
+    thumbBand(docTop, docHeight, scrollTop, viewportHeight) {
+      if (this.thumbEl && this.thumbEl.isConnected) {
+        const thumb = this.thumbEl.getBoundingClientRect();
+        const strip = this.thumbEl.parentElement?.getBoundingClientRect();
+        if (strip && strip.height > 0 && thumb.height > 0) {
+          const top = (thumb.top - strip.top) / strip.height * this.height;
+          const height = (thumb.height / strip.height) * this.height;
+          return {
+            top: Math.max(0, Math.min(this.height, top)),
+            height: Math.max(1, Math.min(this.height, height)),
+          };
+        }
+      }
+      // Before the thumb is laid out, fall back to the plain proportion.
+      const max = Math.max(this.docHeight - viewportHeight, 1);
+      const top = (scrollTop / max) * docHeight;
+      const height = (viewportHeight / this.docHeight) * docHeight;
+      return { top: docTop + top, height: Math.max(1, height) };
     }
 
     foregroundColor() {
