@@ -22,6 +22,7 @@ SHORT = "/article.html"    # ~60 lines: blocks
 LONG = "/long.html"        # ~400 lines: Kate's raster
 GRAPHICS = "/graphics.html"  # short, with images
 BLOCKS = "/blocks.html"    # short, with one big image and a link
+COLUMNS = "/columns.html"  # two columns, long enough for the raster
 
 PROBE = r"""
 const map = document.querySelector(".scrollpeak-map");
@@ -150,6 +151,13 @@ def main():
             check("and it is still link-red",
                   d["samples"]["link"][0] > d["samples"]["link"][2],
                   str(d["samples"]["link"]))
+
+            print("\ntwo columns of text are blocks, not a raster")
+            d = page(COLUMNS)
+            check("renderer is blocks", d["mode"] == "blocks", str(d["mode"]))
+            check("both columns are blocks",
+                  d["blocks"]["text"] >= 100 and d["blocks"]["link"] >= 50,
+                  json.dumps(d["blocks"]))
 
             print("\nimages are blocks, drawn hollow")
             d = page(BLOCKS)

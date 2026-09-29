@@ -64,6 +64,14 @@
   // blocks instead. See collectBlocks().
   const BLOCK_MIN_LINE_PX = 4;
 
+  // And when the text is spread wider than this fraction of the viewport, it
+  // is not one column: the raster draws every line from the left margin by
+  // design, so the extremes -- a watch page with its sidebar -- become rows
+  // of unrelated fragments. Measured: YouTube's watch page 0.88, GitHub's
+  // repository page 0.67 (its file list still reads as text, so it stays on
+  // the raster), Wikipedia 0.44, a single-column article 0.03.
+  const BLOCK_SPREAD_FRACTION = 0.75;
+
   // What becomes a block: the boxes a person navigates by. Links and images
   // are drawn as themselves; everything else is a text area.
   const BLOCK_SELECTOR = [
@@ -280,8 +288,31 @@
     #wantsBlocks() {
       // One text line per BLOCK_MIN_LINE_PX of groove, or fatter. The height
       // guard keeps a tiny map from flipping modes on rounding.
-      return this.height >= 40 && this.lines.length > 0 &&
-        this.lines.length * BLOCK_MIN_LINE_PX < this.height;
+      if (this.height >= 40 && this.lines.length > 0 &&
+          this.lines.length * BLOCK_MIN_LINE_PX < this.height) {
+        return true;
+      }
+      return this.#spreadFraction() > BLOCK_SPREAD_FRACTION;
+    }
+
+    /**
+     * How wide is the text, as a fraction of the viewport?
+     *
+     * The 10th to 90th percentile of line x, so a single stray line does not
+     * decide it. Sampled when the document is very long, because this runs on
+     * every collect and the sort is the only cost.
+     */
+    #spreadFraction() {
+      const n = this.lines.length;
+      if (n < 12) return 0;
+      const step = n > 4000 ? 3 : 1;
+      const xs = [];
+      for (let i = 0; i < n; i += step) xs.push(this.lines[i].x);
+      xs.sort((a, b) => a - b);
+      const low = xs[Math.floor(xs.length * 0.1)];
+      const high = xs[Math.min(xs.length - 1, Math.floor(xs.length * 0.9))];
+      const width = document.documentElement.clientWidth || window.innerWidth;
+      return (high - low) / Math.max(1, width);
     }
 
     /**
@@ -514,6 +545,36 @@
     /** Left edge of the main content column, robustly. */
     contentLeftOf() {
       return this.contentLeft;
+    }
+
+    /**
+     * Left edge of the content *near a document offset*.
+     *
+     * A single contentLeft is right for a text document, where every line
+     * starts at the same x, and for a page with one column. It is wrong for a
+     * page with two: YouTube's recommendations sit at x ~ 1200 while the
+     * article column is at x ~ 0, and a preview pinned to the global left
+     * edge shows the empty article column however far down the map the marks
+     * came from -- the user hovers a recommendation in the map and gets a
+     * blank window.
+     *
+     * The anchor is the longest line in a small window around the hovered
+     * offset, not the leftmost: a page is full of one-character fragments
+     * (clipped carousels, timestamps, badges) that would drag the window to
+     * the far left, while the line with the most text is the content the eye
+     * is on.
+     */
+    contentLeftNear(docY) {
+      if (!this.lines.length) return this.contentLeft;
+      const at = this.indexAtY(docY);
+      const lo = Math.max(0, at - 12);
+      const hi = Math.min(this.lines.length, at + 13);
+      let best = null;
+      for (let i = lo; i < hi; i++) {
+        const line = this.lines[i];
+        if (!best || line.text.length > best.text.length) best = line;
+      }
+      return best ? best.x : this.contentLeft;
     }
 
     /** Cheap upper bound on line count, to pick simple mode before collecting. */

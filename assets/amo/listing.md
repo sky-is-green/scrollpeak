@@ -35,8 +35,9 @@ you where the rest of the page is before you go there.
 - **Click** to jump there. **Drag** to scroll continuously.
 - **Peek** parks the rail off-screen until you approach it.
 - **Minimap only** drops the track and keeps the map.
-- On short pages the map turns into a block diagram — links in their own
-  colour, pictures as outlines — so it stays clean instead of blurring.
+- On short or multi-column pages the map turns into a block diagram — links in
+  their own colour, pictures as outlines — so it stays clean instead of
+  blurring.
 - The map's width, its colours and a per-site exclusion list are all settings.
 - The default strip colour follows your Firefox theme.
 

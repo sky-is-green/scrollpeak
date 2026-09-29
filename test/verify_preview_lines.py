@@ -48,12 +48,12 @@ setTimeout(() => { move(); setTimeout(report, 500); }, 600);
 
 function report() {
   const pop = document.querySelector(".scrollpeak-magnifier");
-  const stage = pop.querySelector(".scrollpeak-magnifier__stage");
-  // The clone lives in this document too, so the page's own query would
-  // return both copies and every pairing would be off by the clone's size.
-  const page = [...document.querySelectorAll(SEL)]
-    .filter((el) => !el.closest('.scrollpeak-magnifier'));
-  const clone = [...stage.querySelectorAll(SEL)];
+  const frame = pop.querySelector(".scrollpeak-magnifier__frame");
+  const idoc = frame.contentDocument;
+  // The clone lives in the preview's frame, so querying this document for
+  // SEL returns only the page's own copy -- which is what the pairs want.
+  const page = [...document.querySelectorAll(SEL)];
+  const clone = [...idoc.querySelectorAll(SEL)];
   const n = Math.min(page.length, clone.length);
   const pairs = [];
   // Offsets, not positions: the transform translates to put the hovered region
@@ -78,12 +78,12 @@ function report() {
   done({
     open: pop.classList.contains("is-open"),
     pageCount: page.length, cloneCount: clone.length, pairs,
-    stageText: stage.textContent,
+    stageText: idoc.body.textContent,
     // Does the preview contain a second copy of a string the page has once?
     dupes: ["Colour as structure", "Colour is doing most of the work here",
             "reusing those is cheaper", "signal the page was already giving us for free"]
-      .map((s) => ({ s, n: stage.textContent.split(s).length - 1 })),
-    nodeCount: stage.querySelectorAll("*").length,
+      .map((s) => ({ s, n: idoc.body.textContent.split(s).length - 1 })),
+    nodeCount: idoc.querySelectorAll(".scrollpeak-magnifier__page *").length,
     dbg: pop.dataset.dbg,
   });
 }

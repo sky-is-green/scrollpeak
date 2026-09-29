@@ -120,10 +120,13 @@ setTimeout(() => {
     // what is in it, which also proves it is not empty: the clone is one
     // subtree, so counting its nodes is counting what it is showing.
     const stage = pop.querySelector(".scrollpeak-magnifier__stage");
+    const frame = pop.querySelector(".scrollpeak-magnifier__frame");
+    const idoc = frame ? frame.contentDocument : null;
     out.hasStage = !!stage;
-    out.clone = stage ? stage.querySelectorAll(".scrollpeak-magnifier__page").length : 0;
-    out.stageNodes = stage ? stage.querySelectorAll("*").length : 0;
-    out.hasPageText = stage ? stage.textContent.trim().length > 40 : false;
+    out.hasFrame = !!frame;
+    out.clone = idoc ? idoc.querySelectorAll(".scrollpeak-magnifier__page").length : 0;
+    out.stageNodes = idoc ? idoc.querySelectorAll(".scrollpeak-magnifier__page *").length : 0;
+    out.hasPageText = idoc ? idoc.body.textContent.trim().length > 40 : false;
   }
   done(out);
 }, 800);
@@ -171,6 +174,7 @@ def main():
             ok = (k in ("exists", "open", "placed_left_of_strip",
                         "fully_on_screen") and v) or \
                  (k == "hasStage" and v) or \
+                 (k == "hasFrame" and v) or \
                  (k == "clone" and v == 1) or \
                  (k == "stageNodes" and v > 20) or \
                  (k == "hasPageText" and v) or \

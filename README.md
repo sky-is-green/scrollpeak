@@ -77,16 +77,18 @@ characters are sliced onto it. Whitespace that is genuinely significant
 (`<pre>`, `white-space: pre*`) is detected per element from its own computed
 value rather than guessed.
 
-**A short page stops being a raster.** Kate's raster assumes a document of
-thousands of lines. A page with a few dozen has each line stretched over
-10px of groove or more, and the characters stop being characters — the map
-becomes bands of blobs. Below one line per 4px of groove — short articles,
-site stubs, the settings page — the map switches to semantic blocks instead:
-text areas filled white or black, whichever contrasts with the strip; links in
-the page's own link colour, pushed to contrast the same way the raster's marks
-are; and images as hollow 1px outlines. It is an addition to the port rather
-than a change to it: on a long document, where Kate's raster reads as text,
-nothing about it changes.
+**A page that is not one column of text stops being a raster.** Two things
+switch the map to semantic blocks. One is zoom: below one text line per 4px of
+groove — short articles, site stubs, the settings page — each line is stretched
+into a band of blobs and the characters stop being characters. The other is
+shape: when the text is spread over more than 0.75 of the viewport's width (a
+watch page with its recommendation column), the raster has no way to show it,
+because by design it draws every line from the left margin. Blocks are then
+drawn instead: text areas filled white or black, whichever contrasts with the
+strip; links in the page's own link colour, pushed to contrast the same way the
+raster's marks are; and images as hollow 1px outlines. It is an addition to the
+port rather than a change to it: on a long single-column document, where Kate's
+raster reads as text, nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
@@ -114,25 +116,35 @@ approach is wrong rather than incomplete.
 The right analogue of "ask the renderer" on the web is to let the browser
 render it. **The preview is a clone of the page's content**, moved into the
 magnifier with a CSS transform: translated so the hovered region is in view,
-scaled by 0.75. Same markup, same stylesheet, same layout engine, so there is
-nothing to keep in sync and no way for it to disagree with the page. The
-transform is also what makes it affordable: a transform does not reflow, so
-following the pointer is a compositor operation, not a layout one.
+scaled by 0.75. Same markup, same layout engine, so there is nothing to keep in
+sync and no way for it to disagree with the page. The transform is also what
+makes it affordable: a transform does not reflow, so following the pointer is a
+compositor operation, not a layout one.
 
-Three things the clone needs:
+**The clone renders in a sandboxed same-origin iframe**, not in this document.
+A clone inserted here is live: its web components upgrade, their
+`connectedCallback` runs, and a page's own components then re-render themselves
+from state a clone does not have. On YouTube's watch page that wiped 94% of the
+clone — 4,650 nodes to 303 — and left the preview blank. A frame has an empty
+custom-element registry and no page scripts run in it, so the cloned components
+stay inert. Its viewport is set to the page's and the page's stylesheets are
+copied in through the CSSOM, because a frame does not inherit the parent's
+cascade.
+
+What the clone needs, then:
 
 - **Our UI is removed from it**, or the rail and the preview would be cloned
   into themselves; `id`s are stripped, or the page's own `getElementById` would
   start matching the preview; `canvas` pixels and `input`/`textarea`/`select`
   state are copied, because `cloneNode` does not carry them.
-- **`position: fixed` elements are hidden.** A cookie banner or sticky toolbar
-  has no document position — it is wherever the viewport is — so left in, it
-  would sit pinned over one arbitrary part of a preview of the whole page.
-  Elements that are merely `sticky` stay where they flow.
-- **The clone is pinned to the page's layout width**, so percentage widths,
-  tables and floats resolve exactly as they do on the page — while media queries
-  and viewport units still evaluate against the same viewport, because the clone
-  is in this document.
+- **`position: fixed` elements are hidden**, read through the frame's window.
+  A cookie banner or sticky toolbar has no document position — it is wherever
+  the viewport is — so left in, it would sit pinned over one arbitrary part of
+  a preview of the whole page. Elements that are merely `sticky` stay where
+  they flow.
+- **The frame gives it the page's viewport**, so percentage widths, tables,
+  floats, `vh` units and media queries all resolve exactly as they do on the
+  page.
 
 Rebuilding the clone is the expensive half — about 130ms for a 13,500-node page
 — so it happens on the map's own revision and not while the pointer is moving: a
@@ -149,7 +161,7 @@ asserts each appears exactly once in the preview, which is the check that would
 have caught the old model's duplication directly: a reconstructed run and a
 cloned graphic drawing the same text, a few pixels apart.
 
-The preview's frame is a 2px hairline. Its coordinates are the page's own, so
+The preview's frame is a 1px hairline. Its coordinates are the page's own, so
 every pixel of padding is a pixel of the page pushed out of view, and the page
 supplies its own margins.
 
@@ -411,13 +423,14 @@ the map leaks no graphics (red = 0, green = 0 in a 60px strip).
 
 Known limits, in rough priority order:
 
-- **The map is a text raster, and a block diagram when it is zoomed in.** On a
-  long document it is built from the page's own line boxes, so images, borders
-  and empty containers carry no marks; that is Kate's model. On a short one it
-  switches to the semantic blocks described above, where images are outlines
-  and links are their own colour. A page with heavy grid or flex layout still
-  maps its text where the browser put it, and the preview is unaffected — the
-  preview is the page.
+- **The map is a text raster until a page is not one column of text.** On a
+  long single-column document it is built from the page's own line boxes, so
+  images, borders and empty containers carry no marks; that is Kate's model.
+  When the text is stretched too far, or spread across columns, it switches to
+  the semantic blocks described above, where images are outlines and links are
+  their own colour. A page with heavy grid or flex layout still maps its text
+  where the browser put it, and the preview is unaffected — the preview is the
+  page.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
   on the first hover of a page load; it is the one rough edge left in frame

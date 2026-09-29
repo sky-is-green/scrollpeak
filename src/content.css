@@ -120,15 +120,35 @@ html.vugluscr_embedded {
   visibility: visible;
 }
 
-/* The preview's content is real DOM cloned from the page -- an inline <svg>
- * cloned into this document keeps the page's own CSS, which is how most icon
- * systems get their colour. That is the whole reason this is not a canvas. */
+/* The preview's content is real DOM cloned from the page into the preview's
+ * sandboxed frame, with the page's stylesheets copied in -- an inline <svg>
+ * keeps the page's own CSS, which is how most icon systems get their colour.
+ * That is the whole reason this is not a canvas. */
 .scrollpeak-magnifier__stage {
   position: relative;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+/* The cloned page renders in a sandboxed same-origin iframe, not in this
+ * document. A clone inserted here is live: the page's custom elements upgrade
+ * and re-render themselves from state the clone does not have, which on
+ * some sites wipes the cloned content entirely. An iframe has an empty custom
+ * element registry and runs no page scripts, so the clone stays a picture.
+ * magnifier.js sets the frame's size to the page's viewport and its content:
+ * the page's <html> attributes, its stylesheets, and the clone under
+ * .scrollpeak-magnifier__page. */
+.scrollpeak-magnifier__frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 0;
+  /* The preview never intercepts a click meant for the page beneath; the
+   * popup sets this too, but an iframe is its own browsing context. */
+  pointer-events: none;
+  background: transparent;
 }
 
 /* The cloned page.
