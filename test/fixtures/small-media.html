@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrollPeak small-media fixture</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0 auto; max-width: 44rem;
+         padding: 2rem 1rem 6rem; color: #1c1c1e; background: #fdfdfc; }
+  h1 { color: #10233f; }
+  h2 { color: #1d4e89; margin-top: 2rem; }
+  /* Wikipedia's infobox holds a video about this size. It is a thumbnail, not
+     a player, and must not send the page to the native-scrollbar fallback. */
+  video { display: block; width: 250px; height: 141px; background: #222; }
+  .spacer { height: 45vh; }
+</style>
+</head>
+<body>
+<h1>A page with a thumbnail video</h1>
+<p>An article that happens to embed a small video, the way an encyclopaedia
+infobox does. This is not a media page and keeps its map.</p>
+<video data-id="small-player"></video>
+<div class="spacer"></div>
+<h2>Lower down</h2>
+<p>Enough text below the video that the page scrolls.</p>
+</body>
+</html>

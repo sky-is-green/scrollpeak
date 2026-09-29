@@ -33,6 +33,12 @@ const DEFAULT_SETTINGS = {
   // cursor, which is the feature this whole project exists for.
   showMagnifier: true,
 
+  // The preview's size, as a percentage of the window. Kate hard-codes half
+  // the view's width by a fifth of its height and offers no setting, so the
+  // defaults are his and the settings are an extension.
+  magnifierWidth: 50,
+  magnifierHeight: 20,
+
   // Kate's ShowScrollBarMarks, default off. In Kate these are bookmarks and
   // breakpoints; here they are heading positions, which is a guess about what
   // matters on an arbitrary page, so it stays opt-in.

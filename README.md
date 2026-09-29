@@ -92,20 +92,21 @@ raster reads as text, nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
-**A page that is mostly pictures gets a map of its pictures.** The block
-vocabulary is still text: on YouTube's watch page the player is a `<video>` the
-selector never had, the recommendation cards are `div`s it never matches, and
-the titles and badges it does match are the noise, not the structure. Media
-pages therefore get a third renderer with a different vocabulary: replaced
-elements by geometry rather than by tag name — `<video>`, `<img>`, `<canvas>`,
-`<iframe>` above a floor size, deduplicated and drawn as boxes, the player
-filled with the accent, everything else outlined, paragraphs and headings as
-bars underneath. Which pages count is measured, not taste: a video at least
-300×150 (Wikipedia's 250×141 infobox thumbnail must not qualify), or at least
-twelve pictures of 200×100 covering a fifth of the document (YouTube watch
-797×598 and 26 big pictures; Reddit 38 and 56%; against Wikipedia 9 and 1.4%,
-GitHub 1 and 2%). The text raster and the block renderer are untouched;
-`test/verify_media.py` checks both the switch and the negative case.
+**A page that is mostly pictures keeps the browser's own scrollbar.** The
+block vocabulary is still text: on YouTube's watch page the player is a
+`<video>` the block selector never had, the recommendation cards are `div`s it
+never matches, and the titles and badges it does match are the noise, not the
+structure. A third renderer was written for those pages and did not read well
+enough to be worth a second product, so ScrollPeak leaves them alone instead:
+it does not mount, and the native scrollbar stays. Which pages count is
+measured, not taste: a video at least 300×150 (Wikipedia's 250×141 infobox
+thumbnail must not qualify), or at least twelve pictures of 200×100 covering
+more than a third of the document (YouTube watch has a 797×598 player; BBC's
+front 43 pictures at 33%, Reddit's 38 at 56%; against Wikipedia 9 at 1.4%,
+GitHub 1 at 2%). The decision is re-checked while the rail is up, so a page
+that grows a player later — YouTube is an SPA — still loses it.
+`test/verify_media.py` checks the fallback, the late arrival, and the
+near-misses that must keep their maps.
 
 **The preview is not a zoom of the map.** Kate's `KateTextPreview` renders the
 *real text* of the hovered region at 0.75 scale — smaller than the editor's own
@@ -298,7 +299,7 @@ Settings changes are broadcast from `browser.storage.onChanged` rather than by
 each writer remembering to, so the popup, the options page and anything added
 later all update the open tabs without knowing the tabs exist.
 
-### Kate's own settings for this feature, and only those. From
+### The settings Kate offers for this feature. From
 `KateViewConfig` / the Appearance → Borders tab:
 
 | Setting | Kate default | Here |
@@ -318,8 +319,6 @@ Deliberately **not** ported:
 - **"Show whole document in the mini-map"** (`ShowScrollBarMiniMapAll`).
   Kate's own settings dialog hides its checkbox with the comment *"temporary
   until the feature is done"*, so it is not a setting anyone can depend on.
-- **Preview size and scale.** Kate hardcodes half the window wide by a fifth
-  tall, at 0.75 scale, and offers no control. Neither do we.
 - **Map tint or opacity.** The map takes the page's own colours by design; a
   tint setting would fight that.
 
@@ -329,6 +328,8 @@ These are web-specific, with no analogue in an editor:
 
 | Setting | Default | What it does |
 |---|---|---|
+| Preview width | 50% of the window | The hover preview's width. Kate draws his at half the window and offers no control, so the default is his and the setting is an addition. |
+| Preview height | 20% of the window | The hover preview's height. Same arrangement. |
 | Minimap only, no track | off | Drops the narrow drag track, so the rail is just the map and takes 14px less. The page's gutter shrinks with it. |
 | Hide until I scroll or approach | off | Parks the rail off the right edge. It returns on scroll, wheel, key press, or when the pointer comes within the trigger distance. |
 | Trigger distance | 48px | How close to the right edge counts as "near". |
@@ -397,7 +398,7 @@ python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
 python3 test/verify_graphics.py       # images, SVG, canvas and backgrounds
 python3 test/verify_preview_lines.py  # the preview reproduces the page's lines
 python3 test/verify_blocks.py         # text raster when long, blocks when zoomed
-python3 test/verify_media.py          # media pages get the media renderer
+python3 test/verify_media.py          # media pages keep the native scrollbar
 python3 test/test_appearance.py       # colour, contrast, minimap-only, peek
 python3 test/test_settings.py         # every setting changes something
 python3 test/probe_sites.py           # live sites; edit SITES at the top
@@ -444,10 +445,10 @@ Known limits, in rough priority order:
   images, borders and empty containers carry no marks; that is Kate's model.
   When the text is stretched too far, or spread across columns, it switches to
   the semantic blocks described above, where images are outlines and links are
-  their own colour; and a page that is mostly pictures switches again, to the
-  media renderer, where the cards are the map. A page with heavy grid or flex
-  layout still maps its text where the browser put it, and the preview is
-  unaffected — the preview is the page.
+  their own colour. A page that is mostly pictures — a player, a card grid —
+  is left to the browser's own scrollbar instead of being mapped at all. A
+  page with heavy grid or flex layout still maps its text where the browser
+  put it, and the preview is unaffected — the preview is the page.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
   on the first hover of a page load; it is the one rough edge left in frame

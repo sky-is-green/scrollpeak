@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrollPeak late-media fixture</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0 auto; max-width: 44rem;
+         padding: 2rem 1rem 6rem; color: #1c1c1e; background: #fdfdfc; }
+  h1 { color: #10233f; }
+  h2 { color: #1d4e89; margin-top: 2rem; }
+  video { display: block; width: 480px; height: 270px; background: #222; }
+  .spacer { height: 45vh; }
+</style>
+</head>
+<body>
+<h1>A page that becomes a media page</h1>
+<p>This starts life as a plain article, so the rail mounts. The test then calls
+the hook below, which drops a player into the page the way an SPA renders one
+after the content script has already run.</p>
+<div class="spacer"></div>
+<h2>Lower down</h2>
+<p>Enough text that the page scrolls while the rail is up.</p>
+<script>
+  // Called by test/verify_media.py, not on load: the point is that the rail
+  // is already mounted when the player arrives.
+  window.__addPlayer = function () {
+    const player = document.createElement("video");
+    player.setAttribute("data-id", "late-player");
+    document.body.insertBefore(player, document.body.firstChild);
+  };
+</script>
+</body>
+</html>

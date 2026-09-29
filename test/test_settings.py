@@ -45,6 +45,31 @@ done({
 });
 """
 
+# Hover the rail and report the preview's real size against the window, so a
+# setting can be checked against what a person would see.
+MAGNIFY = r"""
+const done = arguments[arguments.length - 1];
+const strip = document.querySelector(".vugluscr .minimap");
+if (!strip) { done({err: "no rail"}); return; }
+const sr = strip.getBoundingClientRect();
+function move() {
+  strip.dispatchEvent(new PointerEvent("pointermove", {
+    clientX: sr.left + sr.width / 2, clientY: sr.top + sr.height * 0.5,
+    bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+}
+move();
+setTimeout(() => {
+  const pop = document.querySelector(".scrollpeak-magnifier");
+  if (!pop) { done({err: "no preview"}); return; }
+  const r = pop.getBoundingClientRect();
+  done({
+    open: pop.classList.contains("is-open"),
+    width: Math.round(r.width), height: Math.round(r.height),
+    innerW: window.innerWidth, innerH: window.innerHeight,
+  });
+}, 800);
+"""
+
 
 def variant(patch):
     """A copy of src/ with different defaults.
@@ -99,6 +124,13 @@ def main():
                         {"script": INSPECT, "args": [], "scriptTimeout": 20000})
               return r.get("value", r)
 
+          def magnified(url):
+              m.cmd("WebDriver:Navigate", {"url": url})
+              time.sleep(3)
+              r = m.cmd("WebDriver:ExecuteAsyncScript",
+                        {"script": MAGNIFY, "args": [], "scriptTimeout": 20000})
+              return r.get("value", r)
+
           print("Kate's defaults")
           install({})
           p = page(article)
@@ -140,6 +172,26 @@ def main():
           install({"minimapWidth": 140})
           p = page(article)
           check("wide map is honoured", p["mapWidth"] == 140, f"map={p['mapWidth']}px")
+
+          print("\nmagnifier size")
+          install({"magnifierWidth": 80, "magnifierHeight": 40})
+          d = magnified(article)
+          check("the preview is the configured fraction of the window",
+                d.get("open") and
+                abs(d["width"] - d["innerW"] * 0.80) <= 2 and
+                abs(d["height"] - d["innerH"] * 0.40) <= 2,
+                f"{d.get('width')}x{d.get('height')} of "
+                f"{d.get('innerW')}x{d.get('innerH')}")
+          # The options sliders cannot leave the range, but a hand-edited or
+          # older profile can, and the magnification should not.
+          install({"magnifierWidth": 1000, "magnifierHeight": 1})
+          d = magnified(article)
+          check("out-of-range sizes are clamped",
+                d.get("open") and
+                abs(d["width"] - d["innerW"]) <= 2 and
+                abs(d["height"] - d["innerH"] * 0.05) <= 2,
+                f"{d.get('width')}x{d.get('height')} of "
+                f"{d.get('innerW')}x{d.get('innerH')}")
 
           print("\nglobal switch")
           install({"enabled": False})

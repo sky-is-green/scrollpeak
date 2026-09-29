@@ -18,12 +18,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import SRC, launch_firefox, stop_firefox  # noqa: E402
 
 SITES = [
-    ("GitHub (SPA)", "https://github.com/mozilla/firefox"),
-    ("Wikipedia", "https://en.wikipedia.org/wiki/Firefox"),
-    ("YouTube watch (media)", "https://www.youtube.com/watch?v=jNQXAC9IVRw"),
-    ("w3.org spec (20k nodes)", "https://www.w3.org/TR/CSS-color-4/"),
-    ("MDN reference", "https://developer.mozilla.org/en-US/docs/Web/CSS/color-mix"),
-    ("Hacker News (short)", "https://news.ycombinator.com/"),
+    # (label, url, expectation). "native" means the page is media-heavy and
+    # should be left to the browser's own scrollbar; "rail" means the map.
+    ("GitHub (SPA)", "https://github.com/mozilla/firefox", "rail"),
+    ("Wikipedia", "https://en.wikipedia.org/wiki/Firefox", "rail"),
+    ("YouTube watch (media)", "https://www.youtube.com/watch?v=jNQXAC9IVRw", "native"),
+    ("w3.org spec (20k nodes)", "https://www.w3.org/TR/CSS-color-4/", "rail"),
+    ("MDN reference", "https://developer.mozilla.org/en-US/docs/Web/CSS/color-mix", "rail"),
+    ("Hacker News (short)", "https://news.ycombinator.com/", "rail"),
 ]
 
 SETTLE = int(os.environ.get("SETTLE", "9"))
@@ -70,7 +72,7 @@ done(out);
 def main():
     proc, m = launch_firefox(SRC)
     try:
-        for label, url in SITES:
+        for label, url, expect in SITES:
             t0 = time.time()
             try:
                 m.cmd("WebDriver:Navigate", {"url": url})
@@ -86,13 +88,21 @@ def main():
                 print(f"  [SKIP] {label:24} probe failed: {str(e)[:80]}", flush=True)
                 continue
 
-            ok = d.get("rail") and d.get("painted", 0) > 500 and not d.get("hOverflow")
+            if expect == "native":
+                # Media pages are left alone; what "ok" means there is the
+                # absence of the rail, not a painted map.
+                ok = not d.get("rail") and not d.get("active")
+                detail = f"rail={d.get('rail')} active={d.get('active')}"
+            else:
+                ok = (d.get("rail") and d.get("painted", 0) > 500
+                      and not d.get("hOverflow"))
+                detail = (f"{d.get('ratio')}x  map={d.get('mapWidth')}px "
+                          f"painted={d.get('painted')} colours={d.get('colors')} "
+                          f"mode={d.get('mode')} dom={d.get('domNodes')} "
+                          f"padR={d.get('bodyPadRight')} hOver={d.get('hOverflow')}")
             mark = "ok " if ok else "BAD"
             print(
-                f"  [{mark}] {label:24} {d.get('ratio')}x  "
-                f"map={d.get('mapWidth')}px painted={d.get('painted')} "
-                f"colours={d.get('colors')} mode={d.get('mode')} dom={d.get('domNodes')} "
-                f"padR={d.get('bodyPadRight')} hOver={d.get('hOverflow')} "
+                f"  [{mark}] {label:24} {detail} "
                 f"errs={d.get('errors')} ({time.time() - t0:.0f}s)",
                 flush=True,
             )

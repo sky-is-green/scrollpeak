@@ -10,8 +10,9 @@
       <h1>ScrollPeak</h1>
       <p class="lede">
         A scrollbar minimap for Firefox, ported from
-        <a href="https://kate-editor.org">Kate</a>. The settings below are the
-        ones Kate offers for its own scrollbar, and nothing else.
+        <a href="https://kate-editor.org">Kate</a>. The scrollbar settings are
+        Kate's, mapped one for one; the preview's size is an addition, because
+        Kate hard-codes his at half the window by a fifth.
       </p>
 
       <section>
@@ -72,6 +73,22 @@
             >
           </span>
         </label>
+
+        <label class="field field--range">
+          <span>Preview width</span>
+          <input type="range" id="magnifierWidth" min="20" max="100" step="1" />
+          <output id="magnifierWidth-out"></output>
+        </label>
+
+        <label class="field field--range">
+          <span>Preview height</span>
+          <input type="range" id="magnifierHeight" min="5" max="60" step="1" />
+          <output id="magnifierHeight-out"></output>
+        </label>
+        <p class="hint">
+          Both are a percentage of the window. Kate draws the preview at half
+          the width and a fifth of the height, which is where they start.
+        </p>
       </section>
 
       <section>

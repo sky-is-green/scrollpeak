@@ -51,8 +51,16 @@
   const SHOW_DELAY_MS = 250;
 
   // Kate: m_textPreview->resize(view->width() / 2, view->height() / 5)
-  const WIDTH_FRACTION = 0.5;
-  const HEIGHT_FRACTION = 0.2;
+  //
+  // Percentages of the window, and the defaults. The settings can move them;
+  // the clamps keep a slider from making the preview bigger than the window
+  // or too small to read.
+  const DEFAULT_WIDTH_PERCENT = 50;
+  const DEFAULT_HEIGHT_PERCENT = 20;
+  const MIN_WIDTH_PERCENT = 20;
+  const MAX_WIDTH_PERCENT = 100;
+  const MIN_HEIGHT_PERCENT = 5;
+  const MAX_HEIGHT_PERCENT = 60;
 
   // Kate: m_textPreview->setScaleFactor(0.75)
   const SCALE = 0.75;
@@ -79,6 +87,16 @@
 
   function mount(ctx, settings) {
     if (!settings.showMagnifier) return null;
+
+    // The user's chosen size, or Kate's. A stored value outside the clamps
+    // (an old profile, a hand-edited setting) is brought back into range
+    // rather than trusted.
+    const widthPercent = clamp(
+      Number(settings.magnifierWidth) || DEFAULT_WIDTH_PERCENT,
+      MIN_WIDTH_PERCENT, MAX_WIDTH_PERCENT);
+    const heightPercent = clamp(
+      Number(settings.magnifierHeight) || DEFAULT_HEIGHT_PERCENT,
+      MIN_HEIGHT_PERCENT, MAX_HEIGHT_PERCENT);
 
     const popup = document.createElement("div");
     popup.className = "scrollpeak-magnifier";
@@ -133,8 +151,8 @@
     let pageWidth = 0;
 
     function measure() {
-      popupW = Math.round(window.innerWidth * WIDTH_FRACTION);
-      popupH = Math.round(window.innerHeight * HEIGHT_FRACTION);
+      popupW = Math.round(window.innerWidth * widthPercent / 100);
+      popupH = Math.round(window.innerHeight * heightPercent / 100);
       popup.style.width = `${popupW}px`;
       popup.style.height = `${popupH}px`;
       // One read, once, for both of them.

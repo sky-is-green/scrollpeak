@@ -6,11 +6,15 @@
 const $ = (id) => document.getElementById(id);
 
 const CHECKBOXES = ["enabled", "showMagnifier", "showMarkers", "hideTrack", "hideWhenIdle"];
-const RANGES = ["minimapWidth", "darkenAmount", "markContrast", "peekZone", "peekDelay"];
+const RANGES = [
+  "minimapWidth", "magnifierWidth", "magnifierHeight",
+  "darkenAmount", "markContrast", "peekZone", "peekDelay",
+];
 const MODES = ["always", "whenNeeded", "never"];
 
 function formatRange(id, value) {
   if (id === "minimapWidth" || id === "peekZone") return `${value}px`;
+  if (id === "magnifierWidth" || id === "magnifierHeight") return `${value}%`;
   if (id === "peekDelay") return `${(value / 1000).toFixed(1)}s`;
   if (id === "markContrast") return `${value}:1`;
   if (id === "darkenAmount") return `${Math.round(value * 100)}%`;
