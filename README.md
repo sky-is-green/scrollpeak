@@ -118,9 +118,57 @@ Two things the DOM form needs that a canvas did not:
   (`<pre>`, `white-space: pre*`), which is detected per element from its own
   computed value rather than guessed.
 
-The preview also has a 10x14px buffer inside its frame. Its coordinates are the
-page's own, so without one the first run of text begins hard against the border
-and reads as clipped rather than as a window onto the page.
+**Nothing in the preview overlaps.** `test/verify_preview_lines.py` asserts it
+directly: no two rendered runs may overlap in both axes. It is checked because
+three separate things were wrong at once, and none of them was a coordinate
+error -- the collection and placement were verified line by line against the
+page's own document coordinates and were correct throughout.
+
+1. **Out-of-flow content has no document position.** `position: fixed` and
+   `position: sticky` report a viewport-relative rect, and we convert to
+   document coordinates by adding `scrollY`, so for either of them the result
+   is simply wrong -- and rather than spreading out, they pile up at that wrong
+   position. Wikipedia's sticky header, page tools and table-of-contents toggle
+   all landed together at `x = -138`, over the article's own text. They are
+   left out.
+2. **A text node's rect is its inline content box**, which for text inside a
+   tall or absolutely positioned wrapper can be far larger than the line it
+   sits on. Wikipedia's "Toggle Platform availability" measured 51px for one
+   line, so its glyphs were centred in a 38px box and floated over the six TOC
+   entries below. A line box is never more than about 1.25x the font size for
+   the text filling it, so the line height is clamped.
+3. **Advance widths are not linear in font size.** Rounding 14px x 0.75 = 10.5
+   up to 11px made every run about 5% too wide -- the 3px collision between
+   "macOS Catalina" and " or later". CSS takes fractional pixels. Weight and
+   style are passed through as values rather than as "is it bold", for the same
+   reason: 600 is not 700.
+
+Trimming a run's leading whitespace also pulled it back over the one before it.
+Trailing whitespace is noise and is dropped; leading whitespace is a real,
+visible space between two inline elements and is kept.
+
+Graphics are painted behind text, because a cloned graphic can be a whole
+container -- a table header cell carrying a sort arrow is cloned at the cell's
+full size -- and appended after the runs inside it it would paint over them.
+
+Measured on Wikipedia, overlapping pairs went 4 to 0 at the infobox and 6 to 0
+at the releases table, with the chart and the Firefox logo both rendering.
+
+The preview also has a 3x6px buffer inside its frame. Its coordinates are the
+page's own, so every pixel of padding is a pixel of the page pushed out of view
+-- the point is only that the first run of text is not hard against the frame.
+
+## The settings page
+
+The options page mounts a real ScrollPeek on itself, from the same files a page
+gets, so a change can be seen landing without leaving. That is deliberate: a
+preview built from anything else could disagree with what a page actually gets.
+Checked by moving the width control and watching the bar go 60px to 120px.
+
+The popup carries the settings you reach mid-browsing -- the site toggle, the
+magnifier, markers, width, minimap-only and peek -- and All settings, which is
+the largest thing in it. Colour is not in the popup: it belongs on the settings
+page, where the live bar shows what it does.
 
 `test/verify_preview_lines.py` asserts all of that against the page's own
 measured geometry, and each assertion has been checked against a deliberate
