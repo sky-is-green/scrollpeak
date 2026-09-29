@@ -80,6 +80,83 @@ function pageScrolls() {
   return scroller.scrollHeight > window.innerHeight;
 }
 
+/**
+ * Tell the open tabs and refresh the toolbar icon.
+ *
+ * Settings are read once, when a content script mounts, so a change has to be
+ * announced. Watching storage rather than broadcasting from each writer means
+ * the popup and the options page do not need to know the tabs exist.
+ */
+async function broadcastChange() {
+  const tabs = await browser.tabs.query({});
+  await Promise.all(
+    tabs
+      .filter((tab) => tab.id != null)
+      .map((tab) =>
+        browser.tabs
+          .sendMessage(tab.id, { type: "scrollpeak:settingsChanged" })
+          // Tabs without a content script (privileged pages, other add-ons)
+          // reject; expected, not an error.
+          .catch(() => {}),
+      ),
+  );
+  await refreshAction();
+}
+
+/**
+ * Show whether ScrollPeek is on for the tab you are looking at.
+ *
+ * Without this the only way to tell is to look for the rail, and "nothing
+ * appeared" is indistinguishable from "broken".
+ */
+async function refreshAction() {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (!tab || tab.id == null) return;
+
+  const settings = await getSettings();
+  const on = isEnabledForUrl(settings, tab.url ?? "");
+  const host = hostOf(tab.url);
+
+  await browser.action.setIcon({
+    tabId: tab.id,
+    path: on ? {
+      16: "icons/scrollpeak.svg", 32: "icons/scrollpeak.svg", 48: "icons/scrollpeak.svg",
+    } : {
+      16: "icons/scrollpeak-off.svg", 32: "icons/scrollpeak-off.svg", 48: "icons/scrollpeak-off.svg",
+    },
+  });
+
+  await browser.action.setTitle({
+    tabId: tab.id,
+    title: on
+      ? `ScrollPeek — showing on ${host || "this page"}`
+      : `ScrollPeek — off on ${host || "this page"}`,
+  });
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.settings) broadcastChange();
+});
+
+browser.tabs.onActivated.addListener(() => refreshAction());
+browser.tabs.onUpdated.addListener((tabId, info, tab) => {
+  // Only when the tab actually navigated: onUpdated also fires for every
+  // favicon and title change, and this queries storage each time.
+  if (info.status === "complete" || info.url) refreshAction();
+});
+browser.windows.onFocusChanged.addListener(() => refreshAction());
+
+browser.runtime.onInstalled.addListener(() => refreshAction());
+browser.runtime.onStartup.addListener(() => refreshAction());
+
 browser.runtime.onMessage.addListener((message, sender) => {
   switch (message?.type) {
     case "scrollpeak:isEnabled":
@@ -93,21 +170,10 @@ browser.runtime.onMessage.addListener((message, sender) => {
     case "scrollpeak:setSetting": {
       return getSettings().then(async (settings) => {
         const next = { ...settings, ...message.patch };
+        // The broadcast is not done here. storage.onChanged below watches the
+        // store, so every writer -- popup, options page, or anything added
+        // later -- updates the tabs without having to remember to.
         await browser.storage.local.set({ settings: next });
-        // Settings are read once, when a content script mounts. Tell the open
-        // tabs rather than leaving the UI showing a stale rail.
-        const tabs = await browser.tabs.query({});
-        await Promise.all(
-          tabs
-            .filter((tab) => tab.id != null)
-            .map((tab) =>
-              browser.tabs
-                .sendMessage(tab.id, { type: "scrollpeak:settingsChanged" })
-                // Tabs without a content script (privileged pages, other
-                // extensions) reject; expected, not an error.
-                .catch(() => {}),
-            ),
-        );
         return next;
       });
     }

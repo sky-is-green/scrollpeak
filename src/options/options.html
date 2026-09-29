@@ -97,10 +97,34 @@
           subdomains, so <code>example.com</code> also covers
           <code>docs.example.com</code>.
         </p>
+        <form class="addsite" id="addsite">
+          <input
+            type="text"
+            id="site-input"
+            placeholder="example.com"
+            aria-label="Site to exclude"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button type="submit">Exclude site</button>
+        </form>
+        <p class="addsite__error" id="site-error" hidden></p>
         <ul class="sites" id="site-list"></ul>
         <p class="sites__empty" id="sites-empty">
           No sites excluded. ScrollPeek is showing everywhere.
         </p>
+      </section>
+
+      <section>
+        <h2>Links</h2>
+        <nav class="links">
+          <button type="button" class="linkbtn" data-url="https://github.com/sky-is-green/scrollpeak">Source on GitHub</button>
+          <button type="button" class="linkbtn" data-url="https://github.com/sky-is-green/scrollpeak/issues">Report an issue</button>
+          <button type="button" class="linkbtn" data-url="https://kate-editor.org">Kate, the original</button>
+          <button type="button" class="linkbtn" data-url="https://github.com/jurijsk/vugluscr">vugluscr, the scrollbar engine</button>
+          <button type="button" class="linkbtn" id="copy-settings">Copy settings as JSON</button>
+        </nav>
+        <p class="hint" id="copy-note" hidden>Copied to the clipboard.</p>
       </section>
 
       <section>

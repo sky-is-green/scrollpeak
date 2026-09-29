@@ -81,7 +81,7 @@ def main():
     with fixture_server() as server:
         proc, m = launch_firefox(SRC)
         try:
-            m.cmd("WebDriver:Navigate", {"url": server.base + ARTICLE})
+            m.cmd("WebDriver:Navigate", {"url": server.fixtures + ARTICLE})
             time.sleep(4)
 
             r = m.cmd("WebDriver:ExecuteAsyncScript",

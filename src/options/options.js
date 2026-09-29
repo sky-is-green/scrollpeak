@@ -43,7 +43,89 @@ async function load() {
     });
   }
 
+  wireSiteForm();
+  wireLinks();
   renderSites(settings.disabledSites || []);
+}
+
+/**
+ * Add a host to the exclusion list.
+ *
+ * Normalised on the way in: users paste URLs, and "https://Example.com/path"
+ * and "example.com" should not become two different entries.
+ */
+function wireSiteForm() {
+  const form = $("addsite");
+  const input = $("site-input");
+  const error = $("site-error");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const host = normaliseHost(input.value);
+    if (!host) {
+      error.textContent = "That does not look like a hostname.";
+      error.hidden = false;
+      return;
+    }
+    const current = await browser.runtime.sendMessage({
+      type: "scrollpeak:getSettings",
+    });
+    const sites = current.disabledSites || [];
+    if (sites.includes(host)) {
+      error.textContent = `${host} is already excluded.`;
+      error.hidden = false;
+      return;
+    }
+    error.hidden = true;
+    const next = [...sites, host];
+    await persist({ disabledSites: next });
+    renderSites(next);
+    input.value = "";
+  });
+
+  input.addEventListener("input", () => {
+    error.hidden = true;
+  });
+}
+
+/** Take a pasted URL or hostname down to a bare hostname. */
+function normaliseHost(value) {
+  const raw = (value || "").trim().toLowerCase();
+  if (!raw) return "";
+  const withScheme = /^[a-z]+:\/\//.test(raw) ? raw : `https://${raw}`;
+  try {
+    const { hostname } = new URL(withScheme);
+    // A hostname with no dot is not a site, it is a typo.
+    return hostname.includes(".") ? hostname : "";
+  } catch {
+    return "";
+  }
+}
+
+function wireLinks() {
+  for (const el of document.querySelectorAll("[data-url]")) {
+    el.addEventListener("click", () => browser.tabs.create({ url: el.dataset.url }));
+  }
+  $("copy-settings").addEventListener("click", async () => {
+    const settings = await browser.runtime.sendMessage({
+      type: "scrollpeak:getSettings",
+    });
+    // Handy for filing a bug with your configuration attached. The clipboard
+    // can refuse -- permission policy, a non-secure context, an extension page
+    // with no transient activation -- and a rejected promise here would be an
+    // unhandled rejection in the page, so it is handled rather than assumed.
+    const note = $("copy-note");
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(settings, null, 2));
+      note.textContent = "Copied to the clipboard.";
+    } catch {
+      note.textContent = "Could not reach the clipboard.";
+    }
+    note.hidden = false;
+    setTimeout(() => {
+      note.hidden = true;
+    }, 2000);
+  });
 }
 
 /**
@@ -69,6 +151,7 @@ function renderSites(sites) {
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Stop excluding ${site}`);
       remove.addEventListener("click", async () => {
         const current = await browser.runtime.sendMessage({
           type: "scrollpeak:getSettings",

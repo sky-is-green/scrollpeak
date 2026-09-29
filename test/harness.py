@@ -19,6 +19,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "..", "src")
 FIXTURES = os.path.join(HERE, "fixtures")
+REPO = os.path.dirname(HERE)
 ARTICLE = "/article.html"   # ~2200px, scrolls
 SHORT = "/short.html"       # fits on one screen
 
@@ -36,12 +37,20 @@ class QuietServer(socketserver.TCPServer):
 
 
 class fixture_server:
-    """Serve the fixtures, so a test needs nothing running beforehand."""
+    """Serve the repository root, so a test needs nothing running beforehand.
 
-    def __init__(self):
-        handler = functools.partial(QuietHandler, directory=FIXTURES)
+    The root rather than test/fixtures, because some tests load the extension's
+    own pages (popup.html, options.html) over http and need src/... to resolve.
+    Two base URLs come back: `base` for the repository and `fixtures` for
+    test/fixtures, so neither kind of test has to know how the other is served.
+    """
+
+    def __init__(self, root=None):
+        handler = functools.partial(QuietHandler, directory=root or REPO)
         self.httpd = QuietServer(("127.0.0.1", 0), handler)
-        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        origin = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        self.base = origin
+        self.fixtures = f"{origin}/test/fixtures"
 
     def __enter__(self):
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()

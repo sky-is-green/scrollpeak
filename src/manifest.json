@@ -1,25 +1,29 @@
 {
   "manifest_version": 3,
   "name": "ScrollPeek",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A scrollbar minimap. Hover the scrollbar to see the whole page, magnify a section, click to jump.",
   "homepage_url": "https://github.com/sky-is-green/scrollpeak",
-
   "icons": {
     "48": "icons/scrollpeak.svg",
     "96": "icons/scrollpeak.svg"
   },
-
-  "permissions": ["storage"],
-  "host_permissions": ["<all_urls>"],
-
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": [
+      "background.js"
+    ]
   },
-
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "<all_urls>"
+      ],
       "js": [
         "vendor/vugluscr.standalone.js",
         "textmap.js",
@@ -27,25 +31,25 @@
         "magnifier.js",
         "content.js"
       ],
-      "css": ["content.css"],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
-
   "action": {
     "default_title": "ScrollPeek",
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "48": "icons/scrollpeak.svg"
+      "16": "icons/scrollpeak.svg",
+      "32": "icons/scrollpeak.svg"
     }
   },
-
   "options_ui": {
     "page": "options/options.html",
     "open_in_tab": true
   },
-
   "browser_specific_settings": {
     "gecko": {
       "id": "scrollpeak@sky-is-green.github.io",

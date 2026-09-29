@@ -6,24 +6,68 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
+    <!-- MDN: a popup cannot scroll vertically -- Firefox resizes it to fit
+         the content, capped at 800x600. Anything unbounded (the site list)
+         belongs on the options page, not here. -->
     <main class="panel">
-      <header class="panel__head">
-        <h1 class="panel__title">ScrollPeek</h1>
-        <p class="panel__sub" id="site-label">this site</p>
+      <header class="head">
+        <img class="head__icon" src="../icons/scrollpeak.svg" alt="" width="20" height="20" />
+        <div class="head__text">
+          <h1 class="head__title">ScrollPeek</h1>
+          <p class="head__host" id="host">this site</p>
+        </div>
+        <span class="pill" id="state-pill" hidden>off here</span>
       </header>
 
-      <label class="row">
+      <label class="row row--strong">
         <input type="checkbox" id="site-toggle" />
-        <span class="row__label">Show the minimap on this site</span>
+        <span>Show the minimap on this site</span>
+      </label>
+
+      <hr class="rule" />
+
+      <fieldset class="seg">
+        <legend class="seg__legend">Scrollbar</legend>
+        <div class="seg__group">
+          <label class="seg__opt">
+            <input type="radio" name="scrollbarMode" value="always" />
+            <span>Always</span>
+          </label>
+          <label class="seg__opt">
+            <input type="radio" name="scrollbarMode" value="whenNeeded" />
+            <span>When needed</span>
+          </label>
+          <label class="seg__opt">
+            <input type="radio" name="scrollbarMode" value="never" />
+            <span>Never</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <label class="row">
+        <input type="checkbox" id="showMagnifier" />
+        <span>Text preview on hover</span>
       </label>
 
       <label class="row">
-        <input type="checkbox" id="magnifier-toggle" />
-        <span class="row__label">Text preview on hover</span>
+        <input type="checkbox" id="showMarkers" />
+        <span>Heading marks on the track</span>
       </label>
 
-      <footer class="panel__foot">
-        <a href="../options/options.html" target="_blank" rel="noopener">All settings</a>
+      <label class="slider">
+        <span class="slider__label">Minimap width</span>
+        <input type="range" id="minimapWidth" min="20" max="200" step="2" />
+        <output class="slider__out" id="minimapWidth-out">60px</output>
+      </label>
+
+      <footer class="foot">
+        <button type="button" class="link" id="open-options">All settings</button>
+        <span class="foot__sites" id="site-count"></span>
+        <nav class="foot__links">
+          <button type="button" class="link" data-url="https://github.com/sky-is-green/scrollpeak">Source</button>
+          <button type="button" class="link" data-url="https://kate-editor.org">Kate</button>
+          <button type="button" class="link" data-url="https://github.com/sky-is-green/scrollpeak/issues">Report</button>
+        </nav>
       </footer>
     </main>
     <script src="popup.js"></script>

@@ -141,6 +141,80 @@ output {
   margin-top: 0;
 }
 
+.addsite {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.addsite input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.95em;
+}
+
+.addsite input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.addsite button,
+.sites button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.addsite button:hover,
+.sites button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.addsite__error {
+  margin: -4px 0 10px;
+  color: #c0392b;
+  font-size: 0.9em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .addsite__error {
+    color: #ff8a80;
+  }
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linkbtn {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.linkbtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .sites {
   list-style: none;
   margin: 0;

@@ -1,91 +1,251 @@
+/* ScrollPeek — popup styling.
+ *
+ * MDN, "Popups": when setting a popup's width in CSS, set it on <body>, not
+ * on :root. Firefox computes the popup's preferred width from the body in
+ * strict mode, so a width on :root is ignored.
+ *
+ * browser_style is deliberately not set: its support was removed in Manifest V3
+ * in Firefox 118, so the popup is styled by hand here.
+ */
+
 :root {
   color-scheme: light dark;
-  --panel-bg: #ffffff;
-  --panel-fg: #1a1a1a;
-  --panel-muted: #5b5b66;
-  --panel-border: rgba(0, 0, 0, 0.14);
-  --panel-accent: #3b6ea5;
+  --bg: #ffffff;
+  --fg: #15141a;
+  --muted: #5b5b66;
+  --border: rgba(0, 0, 0, 0.13);
+  --surface: rgba(0, 0, 0, 0.045);
+  --accent: #3b6ea5;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --panel-bg: #1c1b22;
-    --panel-fg: #fbfbfe;
-    --panel-muted: #b1b1bd;
-    --panel-border: rgba(255, 255, 255, 0.16);
-    --panel-accent: #7ab;
+    --bg: #1c1b22;
+    --fg: #fbfbfe;
+    --muted: #b1b1bd;
+    --border: rgba(255, 255, 255, 0.14);
+    --surface: rgba(255, 255, 255, 0.06);
+    --accent: #7ab;
   }
 }
 
 body {
   margin: 0;
-  min-width: 260px;
+  /* Width belongs here, not on :root. */
+  width: 17.5rem;
   font: message-box;
   font-size: 13px;
-  color: var(--panel-fg);
-  background: var(--panel-bg);
+  color: var(--fg);
+  background: var(--bg);
 }
 
 .panel {
-  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 2px;
+  padding: 10px;
 }
 
-.panel__head {
-  margin-bottom: 2px;
+/* ------------------------------------------------------------------ header */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
 }
 
-.panel__title {
+.head__icon {
+  flex: none;
+  border-radius: 3px;
+}
+
+.head__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.head__title {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1.2;
 }
 
-.panel__sub {
-  margin: 2px 0 0;
+.head__host {
+  margin: 1px 0 0;
   font-size: 11px;
-  color: var(--panel-muted);
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.pill {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ------------------------------------------------------------------- rows */
+
 .row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 0;
+  padding: 4px 6px;
+  border-radius: 4px;
   cursor: pointer;
 }
 
-.row__label {
-  flex: 1;
+.row:hover {
+  background: var(--surface);
 }
 
-.row:hover .row__label {
-  color: var(--panel-accent);
+.row--strong {
+  font-weight: 600;
 }
 
-input[type="checkbox"] {
-  accent-color: var(--panel-accent);
+.row input,
+.seg input,
+.slider input {
+  accent-color: var(--accent);
   margin: 0;
+  flex: none;
 }
 
-.panel__foot {
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--panel-border);
+.row input:disabled {
+  cursor: default;
 }
 
-.panel__foot a {
-  color: var(--panel-muted);
+.row:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rule {
+  height: 0;
+  margin: 7px 2px;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ------------------------------------------------------- segmented control */
+
+.seg {
+  border: 0;
+  margin: 0 0 4px;
+  padding: 0 0 4px;
+}
+
+.seg__legend {
+  padding: 0 0 4px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.seg__group {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.seg__opt {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 2px;
   font-size: 11px;
-  text-decoration: none;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
 }
 
-.panel__foot a:hover {
-  color: var(--panel-accent);
+.seg__opt:last-child {
+  border-right: 0;
+}
+
+.seg__opt:hover {
+  background: var(--surface);
+}
+
+.seg__opt:has(:checked) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------------- slider */
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+}
+
+.slider__label {
+  flex: none;
+}
+
+.slider input {
+  flex: 1;
+  min-width: 0;
+}
+
+.slider__out {
+  flex: none;
+  min-width: 3.2em;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- footer */
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 7px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.foot__sites {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.foot__sites:empty {
+  display: none;
+}
+
+.foot__links {
+  display: flex;
+  gap: 10px;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.link:hover {
+  color: var(--accent);
   text-decoration: underline;
 }

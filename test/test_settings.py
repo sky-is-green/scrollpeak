@@ -72,9 +72,9 @@ def variant(patch):
 
 def main():
   with fixture_server() as server:
-      # harness.ARTICLE / harness.SHORT are paths; server.base is the origin.
-      article = server.base + ARTICLE
-      short = server.base + SHORT
+      # ARTICLE/SHORT are paths under test/fixtures; the server also serves the repo.
+      article = server.fixtures + ARTICLE
+      short = server.fixtures + SHORT
       proc, m = launch_firefox()
       time.sleep(1)
 

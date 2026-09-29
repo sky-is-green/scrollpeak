@@ -1,60 +1,102 @@
 // ScrollPeek — toolbar popup.
+//
+// The popup is loaded fresh every time it opens and unloaded when it closes,
+// so there is no state to keep. MDN also notes it cannot scroll vertically:
+// Firefox resizes it to fit, capped at 800x600. That is why the site list is
+// not here -- it is on the options page.
+//
+// Every control writes through the background script, which persists to
+// storage and tells the open tabs to re-mount. Nothing here talks to content
+// scripts.
 
 const $ = (id) => document.getElementById(id);
 
-async function activeTab() {
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  return tab;
-}
+const MODES = ["always", "whenNeeded", "never"];
 
 async function init() {
-  const tab = await activeTab();
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   const settings = await browser.runtime.sendMessage({
     type: "scrollpeak:getSettings",
   });
 
-  let host = "";
-  try {
-    host = new URL(tab?.url ?? "").hostname;
-  } catch {
-    host = "";
+  const host = hostOf(tab?.url);
+  $("host").textContent = host || "this site";
+
+  const onThisSite = host ? !isListed(settings.disabledSites, host) : false;
+  $("site-toggle").checked = onThisSite;
+  $("site-toggle").disabled = !host;
+  $("state-pill").hidden = onThisSite;
+  $("state-pill").title = host ? `ScrollPeek is off on ${host}` : "";
+
+  // Kate's three-way scrollbar choice, as a segmented control.
+  for (const mode of MODES) {
+    const el = document.querySelector(`input[name="scrollbarMode"][value="${mode}"]`);
+    el.checked = settings.scrollbarMode === mode;
+    el.addEventListener("change", () => {
+      if (el.checked) save({ scrollbarMode: mode });
+    });
   }
-  $("site-label").textContent = host || "this site";
 
-  const siteToggle = $("site-toggle");
-  const magToggle = $("magnifier-toggle");
+  bindCheckbox("showMagnifier", settings.showMagnifier);
+  bindCheckbox("showMarkers", settings.showMarkers);
 
-  siteToggle.checked = !isListed(settings.disabledSites, host);
-  magToggle.checked = settings.showMagnifier;
+  const width = $("minimapWidth");
+  const widthOut = $("minimapWidth-out");
+  width.value = settings.minimapWidth;
+  widthOut.textContent = `${settings.minimapWidth}px`;
+  width.addEventListener("input", () => {
+    widthOut.textContent = `${width.value}px`;
+  });
+  width.addEventListener("change", () => save({ minimapWidth: Number(width.value) }));
 
-  siteToggle.addEventListener("change", async () => {
+  $("site-toggle").addEventListener("change", async (e) => {
+    if (!host) return;
     const next = new Set(settings.disabledSites);
-    if (siteToggle.checked) next.delete(host);
+    if (e.target.checked) next.delete(host);
     else next.add(host);
-    // The background broadcasts to every open tab afterwards, and the content
-    // script re-mounts itself. Reloading here would discard whatever the user
-    // had typed or half-filled in, for no benefit.
-    await browser.runtime.sendMessage({
-      type: "scrollpeak:setSetting",
-      patch: { disabledSites: [...next] },
-    });
+    await save({ disabledSites: [...next] });
+    $("state-pill").hidden = e.target.checked;
   });
 
-  magToggle.addEventListener("change", async () => {
-    await browser.runtime.sendMessage({
-      type: "scrollpeak:setSetting",
-      patch: { showMagnifier: magToggle.checked },
-    });
+  const excluded = (settings.disabledSites || []).length;
+  $("site-count").textContent = excluded
+    ? `${excluded} site${excluded === 1 ? "" : "s"} excluded`
+    : "";
+
+  $("open-options").addEventListener("click", () => {
+    // Opens the options page wherever the browser puts it: a tab if
+    // options_ui.open_in_tab is true, otherwise inside the add-on manager.
+    browser.runtime.openOptionsPage();
+    window.close();
   });
 
-  markersToggle.addEventListener("change", async () => {
-    await browser.runtime.sendMessage({
-      type: "scrollpeak:setSetting",
-      patch: { showMarkers: markersToggle.checked },
+  for (const el of document.querySelectorAll("[data-url]")) {
+    el.addEventListener("click", () => {
+      browser.tabs.create({ url: el.dataset.url });
+      window.close();
     });
-  });
+  }
 }
 
+function bindCheckbox(id, value) {
+  const el = $(id);
+  el.checked = Boolean(value);
+  el.addEventListener("change", () => save({ [id]: el.checked }));
+}
+
+function save(patch) {
+  return browser.runtime.sendMessage({ type: "scrollpeak:setSetting", patch });
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+/** A parent domain in the list covers its subdomains. */
 function isListed(list, host) {
   if (!host) return false;
   return (list || []).some((entry) => {

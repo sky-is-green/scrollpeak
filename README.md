@@ -136,7 +136,36 @@ reviewed, which is the right route once the UI is settled.
 
 ## Settings
 
-Kate's own settings for this feature, and only those. From
+There are two places, and the split is not a preference — MDN decides it.
+
+A **popup** is loaded fresh every time it opens and Firefox resizes it to fit
+its content with *no vertical scrolling*, capped at 800×600. An unbounded list
+does not fit in that. So the popup carries the settings you might want to reach
+mid-browsing: the current site's toggle, the three-way scrollbar mode, the two
+checkboxes and the width slider. The **options page** carries the site list,
+which grows without bound.
+
+MDN also settles three details that are easy to get wrong:
+
+- **Width goes on `<body>`, not `:root`.** Firefox computes a popup's preferred
+  width from the body, and ignores a width on the root.
+- **`browser_style` must not be set.** Its support was removed in Manifest V3 in
+  Firefox 118, so the popup is styled by hand.
+- **Firefox defaults `default_area` to `"menupanel"`**, which is where the
+  button lives until the user moves it. `"navbar"` would put it beside the URL
+  bar, and Firefox remembers that choice per extension — so changing it later
+  would need a new add-on id. Left at the default.
+
+The toolbar button also shows state: the icon is dimmed and the tooltip says
+"off" when ScrollPeek is disabled for the site you are on. Without it, the only
+way to tell is to look for the rail, and "nothing appeared" is indistinguishable
+from "broken".
+
+Settings changes are broadcast from `browser.storage.onChanged` rather than by
+each writer remembering to, so the popup, the options page and anything added
+later all update the open tabs without knowing the tabs exist.
+
+### Kate's own settings for this feature, and only those. From
 `KateViewConfig` / the Appearance → Borders tab:
 
 | Setting | Kate default | Here |
@@ -173,6 +202,7 @@ actually changes the rail, and that every control on the options page maps to a
 real setting.
 
 ```sh
+python3 test/test_ui.py               # the popup and the options page
 python3 test/smoke.py                 # map, preview, click-to-jump, hover
 python3 test/verify_alignment.py     # map, band, thumb and preview agree
 python3 test/verify_hover_tracking.py # the preview follows a moving pointer
