@@ -182,13 +182,14 @@ def main():
                 abs(d["height"] - d["innerH"] * 0.40) <= 2,
                 f"{d.get('width')}x{d.get('height')} of "
                 f"{d.get('innerW')}x{d.get('innerH')}")
-          # The options sliders cannot leave the range, but a hand-edited or
-          # older profile can, and the magnification should not.
+          # The options slider cannot leave the range, but a hand-edited or
+          # older profile can, and the magnification should not. Width tops
+          # out at 90% so the popup stays on screen beside the rail.
           install({"magnifierWidth": 1000, "magnifierHeight": 1})
           d = magnified(article)
           check("out-of-range sizes are clamped",
                 d.get("open") and
-                abs(d["width"] - d["innerW"]) <= 2 and
+                abs(d["width"] - d["innerW"] * 0.90) <= 2 and
                 abs(d["height"] - d["innerH"] * 0.05) <= 2,
                 f"{d.get('width')}x{d.get('height')} of "
                 f"{d.get('innerW')}x{d.get('innerH')}")

@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
 """
-Check that the preview is the page, translated and scaled.
+Check that the preview is the page rendered at the preview's own viewport.
 
-The preview is a clone of the page's content moved into the magnifier with a
-CSS transform. The claim that makes that worth doing is a strong one and is
-what this tests: every element sits exactly where the page puts it, relative to
-every other element, scaled by 0.75 -- because it is the page's own layout,
-laid out by the same engine, not a reconstruction of it.
+The preview is a clone of the page's content in a sandboxed iframe, scaled by
+0.75. The frame's *width* is the width the stage can show at that scale, not
+the page's width: the page's own responsive CSS reflows to it, exactly as the
+browser would if the window were that wide. That is what stops a narrow
+preview from cropping a wide layout, and it means "the preview is the page"
+has to be checked against the page rendered at the same width -- a reference
+iframe the test opens for itself -- rather than against the page's own
+(likely different) layout.
 
-That is a much better claim than the old test could make. The preview used to
-be assembled from measured text runs and cloned graphics, and the test could
-only check that the measurements were self-consistent. This checks them against
-the page.
-
-Offsets rather than absolute positions, because the transform deliberately
-translates the content to put the hovered region in view; what must not change
-is the relationships.
+What must still hold against the page is the content: the same elements, once
+each, with the page's own relative spacing and sizes whenever the content
+column is narrower than both viewports.
 
 It also checks the two things relative offsets cannot see, both of which were
 real Wikipedia bugs: absolute document placement (a transform origin other
 than the top-left keeps every offset exact and still shows the wrong part of
 the page) and the clone's ids (sites place layout with id-keyed rules, and
-stripping them reflows the clone). A second fixture, grid-ids.html, has its
-columns positioned only by id-keyed rules.
+stripping them reflows the clone). A fixture with a media-query breakpoint
+between the page's width and the preview's proves the reflow itself.
 
     python3 test/verify_preview_lines.py [extension-dir]
 """
@@ -62,27 +60,18 @@ function report() {
   const page = [...document.querySelectorAll(SEL)];
   const clone = [...idoc.querySelectorAll(SEL)];
   const n = Math.min(page.length, clone.length);
-  // The wrap's transform says where the clone is drawn. Parsing it is how
-  // this test tells the two coordinate systems apart: the clone's rects are
-  // scaled and translated, the page's are neither.
   const wrap = idoc.querySelector(".scrollpeak-magnifier__page");
   const tm = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(wrap.style.transform);
   const tx = tm ? -parseFloat(tm[1]) : 0;
   const ty = tm ? -parseFloat(tm[2]) : 0;
   const pairs = [];
-  // Offsets, not positions: the transform translates to put the hovered region
-  // in view, so absolute positions are expected to differ. What must hold is
-  // that the *distance* between two elements is the page's, scaled by 0.75 --
-  // and the page's rects are unscaled while the clone's are already scaled, so
-  // the scale goes on one side of the comparison, not both.
+  // Offsets, not positions: the frame is laid out at a different width from
+  // the page, so absolute positions legitimately differ whenever the content
+  // reflows. What must hold -- for content narrower than both viewports, as
+  // the fixtures' is -- is that the *distances* between elements are the
+  // page's, scaled by 0.75.
   const ra = page[0].getBoundingClientRect();
   const rb = clone[0].getBoundingClientRect();
-  // And absolute placement, the other half of the claim: the clone element
-  // must be the page element's document position, scaled and translated. A
-  // transform origin other than 0 0 keeps every relative offset exact and
-  // still puts the wrong part of the page in the window; this is the check
-  // that catches it.
-  let worstAbs = 0, worstAbsOf = "";
   for (let i = 0; i < n; i++) {
     const a = page[i].getBoundingClientRect();
     const b = clone[i].getBoundingClientRect();
@@ -93,27 +82,19 @@ function report() {
       dx: (b.left - rb.left) - (a.left - ra.left) * SCALE_ARG,
       dy: (b.top - rb.top) - (a.top - ra.top) * SCALE_ARG,
       pw: a.width, cw: b.width, ph: a.height, ch: b.height,
-      ax: a.left + scrollX, ay: a.top + scrollY,
-      bx: b.left / SCALE_ARG + tx, by: b.top / SCALE_ARG + ty,
     });
-    const absErr = Math.max(
-      Math.abs(pairs[pairs.length - 1].bx - pairs[pairs.length - 1].ax),
-      Math.abs(pairs[pairs.length - 1].by - pairs[pairs.length - 1].ay));
-    if (absErr > worstAbs) {
-      worstAbs = absErr;
-      worstAbsOf = page[i].tagName + " " +
-        (page[i].textContent || "").trim().slice(0, 22);
-    }
   }
 
-  // Horizontal centring: the gap the stage leaves on each side of the
-  // clone's *text lines* -- the same population contentSpanNear centres on.
-  // Block rects would not do, because a paragraph is as wide as its column
-  // while its last line is not. The old preview anchored the window's left
-  // edge to the hovered line, which put all the slack on one side and
-  // clipped the other.
+  // The stage's own width is the claim the frame must meet: at 0.75 scale,
+  // stageW pixels of screen show stageW / SCALE document pixels, and the
+  // frame's viewport is that width.
   const stage = pop.querySelector(".scrollpeak-magnifier__stage");
   const sw = stage.clientWidth, sh = stage.clientHeight;
+  const expectedWidth = Math.round(sw / SCALE_ARG);
+
+  // The text lines that actually fall inside the stage, for the centring
+  // check. With the frame laid out at its own width there is no panning; the
+  // gaps are the page's own margins.
   let minL = Infinity, maxR = -Infinity, inStage = 0;
   const walker = idoc.createTreeWalker(idoc.body, NodeFilter.SHOW_TEXT, null);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -129,22 +110,70 @@ function report() {
     }
   }
 
-  done({
-    open: pop.classList.contains("is-open"),
-    pageCount: page.length, cloneCount: clone.length, pairs,
-    stageText: idoc.body.textContent,
-    // Does the preview contain a second copy of a string the page has once?
-    dupes: ["Colour as structure", "Colour is doing most of the work here",
-            "reusing those is cheaper", "signal the page was already giving us for free"]
-      .map((s) => ({ s, n: idoc.body.textContent.split(s).length - 1 })),
-    nodeCount: idoc.querySelectorAll(".scrollpeak-magnifier__page *").length,
-    dbg: pop.dataset.dbg,
-    transformOrigin: getComputedStyle(wrap).transformOrigin,
-    worstAbs: +worstAbs.toFixed(2), worstAbsOf,
-    leftGap: inStage ? Math.round(minL) : null,
-    rightGap: inStage ? Math.round(sw - maxR) : null,
-    inStage,
-  });
+  // The reference: the same URL in an iframe with the clone's exact viewport.
+  // Both are the page at the same width, so their elements must land on each
+  // other -- this is the strongest form of "the preview is the page" the new
+  // model allows, and it is what would catch the frame being laid out at the
+  // wrong width. Fixed, so it takes no room in this page or the clone (the
+  // clone hides fixed elements).
+  const ref = document.createElement("iframe");
+  ref.setAttribute("aria-hidden", "true");
+  ref.style.cssText = "position:fixed;left:-10000px;top:0;visibility:hidden;" +
+    "border:0;" +
+    "width:" + frame.clientWidth + "px;height:" + frame.clientHeight + "px;";
+  ref.addEventListener("load", () => setTimeout(() => finish(ref), 500), { once: true });
+  ref.src = location.href;
+  document.body.appendChild(ref);
+
+  function finish(ref2) {
+    const rdoc = ref2.contentDocument;
+    // No scrollbar in the reference either: the clone's frame has none, and a
+    // classic scrollbar would take 12px of its layout width and shift every
+    // line of the comparison.
+    rdoc.documentElement.style.overflow = "hidden";
+    const refs = [...rdoc.querySelectorAll(SEL)];
+    const clones = [...idoc.querySelectorAll(SEL)];
+    let refPairs = 0, refWorst = 0, refWorstOf = "";
+    for (let i = 0; i < Math.min(refs.length, clones.length); i++) {
+      const a = refs[i].getBoundingClientRect();
+      const b = clones[i].getBoundingClientRect();
+      if (a.width < 1 || b.width < 1) continue;
+      refPairs++;
+      // The clone is scaled by SCALE and translated; the reference is not.
+      // Undo the transform, then compare document geometry.
+      const bl = b.left / SCALE_ARG + tx;
+      const bt = b.top / SCALE_ARG + ty;
+      const bw = b.width / SCALE_ARG;
+      const bh = b.height / SCALE_ARG;
+      const err = Math.max(
+        Math.abs(bl - a.left), Math.abs(bt - a.top),
+        Math.abs(bw - a.width), Math.abs(bh - a.height));
+      if (err > refWorst) {
+        refWorst = err;
+        refWorstOf = refs[i].tagName + " " +
+          (refs[i].textContent || "").trim().slice(0, 22);
+      }
+    }
+    done({
+      open: pop.classList.contains("is-open"),
+      pageCount: page.length, cloneCount: clone.length, pairs,
+      stageText: idoc.body.textContent,
+      // Does the preview contain a second copy of a string the page has once?
+      dupes: ["Colour as structure", "Colour is doing most of the work here",
+              "reusing those is cheaper", "signal the page was already giving us for free"]
+        .map((s) => ({ s, n: idoc.body.textContent.split(s).length - 1 })),
+      nodeCount: idoc.querySelectorAll(".scrollpeak-magnifier__page *").length,
+      dbg: pop.dataset.dbg,
+      transformOrigin: getComputedStyle(wrap).transformOrigin,
+      frameWidth: frame.clientWidth, frameHeight: frame.clientHeight,
+      expectedWidth,
+      pageWidth: window.innerWidth,
+      refPairs, refWorst: +refWorst.toFixed(2), refWorstOf,
+      leftGap: inStage ? Math.round(minL) : null,
+      rightGap: inStage ? Math.round(sw - maxR) : null,
+      inStage,
+    });
+  }
 }
 """
 
@@ -192,6 +221,43 @@ function report() {
 }
 """
 
+# A page whose layout changes at a breakpoint between the page's width and the
+# preview's. The clone must take the narrow branch and the page the wide one.
+RESPONSIVE_PROBE = r"""
+const done = arguments[arguments.length - 1];
+const strip = document.querySelector(".vugluscr .minimap");
+const sr = strip.getBoundingClientRect();
+function move() {
+  strip.dispatchEvent(new PointerEvent("pointermove", {
+    clientX: sr.left + sr.width / 2, clientY: sr.top + sr.height * 0.5,
+    bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+}
+move();
+setTimeout(() => { move(); setTimeout(report, 700); }, 600);
+
+function report() {
+  const pop = document.querySelector(".scrollpeak-magnifier");
+  const frame = pop.querySelector(".scrollpeak-magnifier__frame");
+  const iwin = frame.contentWindow;
+  function branch(doc, win) {
+    const wide = doc.querySelector("#wide");
+    const narrow = doc.querySelector("#narrow");
+    return {
+      wide: wide ? win.getComputedStyle(wide).display !== "none" : null,
+      narrow: narrow ? win.getComputedStyle(narrow).display !== "none" : null,
+    };
+  }
+  const dbg = pop.dataset.dbg ? JSON.parse(pop.dataset.dbg) : null;
+  done({
+    open: pop.classList.contains("is-open"),
+    page: branch(document, window),
+    clone: branch(frame.contentDocument, iwin),
+    pageWidth: window.innerWidth,
+    frameWidth: dbg ? dbg.frameWidth : null,
+  });
+}
+"""
+
 
 def main():
     failures = []
@@ -206,20 +272,28 @@ def main():
     with fixture_server() as server:
         proc, m = launch_firefox()
         try:
+            # The fixture's breakpoints and the preview's width are derived
+            # from the window, so pin it: 1280 wide makes the preview 848.
+            m.cmd("WebDriver:SetWindowRect", {"width": 1280, "height": 800})
             m.cmd("Addon:Install", {"path": ext, "temporary": True})
             time.sleep(2)
-            m.cmd("WebDriver:Navigate", {"url": server.fixtures + "/article.html"})
-            time.sleep(4)
-            r = m.cmd("WebDriver:ExecuteAsyncScript",
-                      {"script": PROBE, "args": [SCALE, SELECTOR], "scriptTimeout": 30000})
-            d = r.get("value", r)
-            d_grid = None
-            try:
-                m.cmd("WebDriver:Navigate", {"url": server.fixtures + "/grid-ids.html"})
+
+            def probe(path, script, args=None, timeout=40000):
+                m.cmd("WebDriver:Navigate", {"url": server.fixtures + path})
                 time.sleep(4)
                 r = m.cmd("WebDriver:ExecuteAsyncScript",
-                          {"script": GRID_PROBE, "args": [], "scriptTimeout": 30000})
-                d_grid = r.get("value", r)
+                          {"script": script, "args": args or [], "scriptTimeout": timeout})
+                return r.get("value", r)
+
+            d = probe("/article.html", PROBE, [SCALE, SELECTOR])
+            d_grid = None
+            d_resp = None
+            try:
+                d_grid = probe("/grid-ids.html", GRID_PROBE)
+            except Exception:
+                pass
+            try:
+                d_resp = probe("/responsive.html", RESPONSIVE_PROBE)
             except Exception:
                 pass
         finally:
@@ -268,22 +342,29 @@ def main():
     check("the clone is one subtree, not many pieces", d["nodeCount"] > 20,
           f"{d['nodeCount']} nodes")
 
-    # The two halves of the Wikipedia report. Relative offsets alone cannot
-    # see either: a wrong transform origin keeps every *distance* exact while
-    # showing the wrong part of the page, and stripping ids keeps every
-    # relative offset exact on a page whose columns are placed by id.
-    print("\nabsolute placement and centring")
+    # The new model, and the two halves of the old Wikipedia report. Relative
+    # offsets alone cannot see any of it: a wrong transform origin keeps every
+    # *distance* exact while showing the wrong part of the page, and a frame
+    # laid out at the page's width keeps every offset exact while cropping.
+    print("\nthe frame is the preview's own viewport")
+    check("the frame width is the width the stage shows",
+          abs(d["frameWidth"] - d["expectedWidth"]) <= 1,
+          f"frame={d['frameWidth']}px expected={d['expectedWidth']}px")
+    check("and it really is narrower than the page",
+          d["frameWidth"] < d["pageWidth"],
+          f"frame={d['frameWidth']}px page={d['pageWidth']}px")
     check("the clone scales from its own top-left corner",
           d["transformOrigin"] in ("0px 0px", "0 0"),
           f"transform-origin {d['transformOrigin']}")
-    check("clone elements sit at the page's document coordinates",
-          d["pairs"] and d["worstAbs"] <= 1.0,
-          f"worst {d['worstAbs']}px ({d['worstAbsOf']})")
-    # The gaps are measured on the lines that happen to fall inside the
-    # stage, while the map centres the column around the hovered offset, so a
-    # few pixels of asymmetry are expected. The old preview left-anchored the
-    # window and put ~130px of slack on this fixture's right-hand side.
-    check("the visible content is centred, not left-anchored",
+
+    print("\nthe clone is the page at that viewport")
+    check("a reference render at the same width lands on it",
+          d["refPairs"] >= 8 and d["refWorst"] <= 1.5,
+          f"worst {d['refWorst']}px over {d['refPairs']} pairs ({d['refWorstOf']})")
+
+    # The gaps are the page's own margins now: the frame is laid out at its
+    # own width, so nothing is panned and no slack is invented.
+    check("the content sits in the frame, not off one side",
           d["inStage"] >= 4 and abs(d["leftGap"] - d["rightGap"]) <= 24,
           f"left {d['leftGap']}px right {d['rightGap']}px over {d['inStage']} lines")
 
@@ -303,11 +384,24 @@ def main():
             check(f"#{sel} sits where the page puts it", e and err <= 1.5,
                   f"dx={e['dx']} dy={e['dy']}" if e else "missing")
 
+    print("\na narrow preview gets the page's narrow layout")
+    if d_resp is None:
+        check("the responsive page could be probed", False)
+    else:
+        check("the preview opened there too", d_resp["open"])
+        check("the page itself uses its wide branch",
+              d_resp["page"]["wide"] and not d_resp["page"]["narrow"],
+              str(d_resp["page"]))
+        check("the clone uses its narrow branch",
+              d_resp["clone"]["narrow"] and not d_resp["clone"]["wide"],
+              f"frame={d_resp['frameWidth']}px of page {d_resp['pageWidth']}px, "
+              f"{d_resp['clone']}")
+
     print()
     if failures:
         print("FAILED: " + ", ".join(failures))
         return 1
-    print("the preview is the page, translated and scaled")
+    print("the preview is the page, rendered at the preview's viewport")
     return 0
 
 

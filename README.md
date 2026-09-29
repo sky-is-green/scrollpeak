@@ -143,24 +143,38 @@ A clone inserted here is live: its web components upgrade, their
 from state a clone does not have. On YouTube's watch page that wiped 94% of the
 clone — 4,650 nodes to 303 — and left the preview blank. A frame has an empty
 custom-element registry and no page scripts run in it, so the cloned components
-stay inert. Its viewport is set to the page's and the page's stylesheets are
-copied in through the CSSOM, because a frame does not inherit the parent's
-cascade.
+stay inert. The page's stylesheets are copied in through the CSSOM, because a
+frame does not inherit the parent's cascade.
+
+**The frame's viewport is the preview's own width**, not the page's. That is
+what makes a narrow preview work: the page's responsive CSS sees a window
+exactly as wide as the frame and reflows — breakpoints, media queries,
+percentage widths, `vw` — instead of being cropped. At a 50% preview on a
+1280px window the clone is laid out at 848px, and the browser does the
+adapting it would do in an 848px window. The frame's *height* stays the page's,
+so `vh` units and full-height sections keep the shape they have on the page
+instead of collapsing to the preview's slit. Because a reflow can change how
+tall the document is, the hovered offset is mapped onto the clone by fraction:
+the map is proportional, and the fraction is what it shows.
 
 What the clone needs, then:
 
-- **Our UI is removed from it**, or the rail and the preview would be cloned
-  into themselves; `id`s are stripped, or the page's own `getElementById` would
-  start matching the preview; `canvas` pixels and `input`/`textarea`/`select`
-  state are copied, because `cloneNode` does not carry them.
+- **Our UI is removed from it** — or the rail and the preview would be cloned
+  into themselves — and so is the room the rail reserved: vugluscr sets an
+  inline `padding-right` on the body, and left in it makes the preview a rail's
+  width narrower than the page really is. `canvas` pixels and
+  `input`/`textarea`/`select` state are copied, because `cloneNode` does not
+  carry them.
 - **`position: fixed` elements are hidden**, read through the frame's window.
   A cookie banner or sticky toolbar has no document position — it is wherever
   the viewport is — so left in, it would sit pinned over one arbitrary part of
   a preview of the whole page. Elements that are merely `sticky` stay where
   they flow.
-- **The frame gives it the page's viewport**, so percentage widths, tables,
-  floats, `vh` units and media queries all resolve exactly as they do on the
-  page.
+- **Ids stay.** Stripping them broke sites whose layout is placed with
+  id-keyed rules: Wikipedia's Vector skin sets `grid-area` on
+  `#content > .vector-body`, and without the id the article body was
+  auto-placed into the wrong grid cell, thousands of pixels away. Through a
+  frame there was never a duplication hazard to guard against.
 
 Rebuilding the clone is the expensive half — about 130ms for a 13,500-node page
 — so it happens on the map's own revision and not while the pointer is moving: a
@@ -168,18 +182,22 @@ clone a moment out of date is a much smaller lie than a preview that cannot keep
 up with the cursor. The first build starts on pointer entry, inside Kate's 250ms
 first-appearance delay.
 
-`test/verify_preview_lines.py` checks the strong claim directly: it pairs the
+`test/verify_preview_lines.py` checks the strong claim directly. It pairs the
 page's elements with the clone's and asserts that the *distance* between any two
 of them is the page's own geometry scaled by 0.75 — offsets, not positions,
-because the transform deliberately translates. The worst error on the fixture
-is 0.01px for offsets and the same for sizes. It also samples strings and
-asserts each appears exactly once in the preview, which is the check that would
-have caught the old model's duplication directly: a reconstructed run and a
-cloned graphic drawing the same text, a few pixels apart.
+because the transform deliberately translates. The worst error on the fixture is
+0.01px for offsets and the same for sizes. Then, because the two documents now
+have different viewports, it opens a *reference* iframe of the same URL at the
+clone's exact width and asserts every element lands on its counterpart, also to
+0.01px; a fixture whose breakpoint sits between the two widths proves the clone
+takes the page's narrow layout while the page keeps its wide one. It also
+samples strings and asserts each appears exactly once in the preview, which is
+the check that would have caught the old model's duplication directly: a
+reconstructed run and a cloned graphic drawing the same text, a few pixels
+apart.
 
-The preview's frame is a 1px hairline. Its coordinates are the page's own, so
-every pixel of padding is a pixel of the page pushed out of view, and the page
-supplies its own margins.
+The preview's frame is a 1px hairline: every pixel here is a pixel of the page
+that is not shown, and the page supplies its own margins.
 
 ## The settings page
 

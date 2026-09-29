@@ -58,7 +58,9 @@
   const DEFAULT_WIDTH_PERCENT = 50;
   const DEFAULT_HEIGHT_PERCENT = 20;
   const MIN_WIDTH_PERCENT = 20;
-  const MAX_WIDTH_PERCENT = 100;
+  // 90, not 100: the popup is placed just left of the rail with an 8px
+  // margin, so a full-width preview would have its right edge off-screen.
+  const MAX_WIDTH_PERCENT = 90;
   const MIN_HEIGHT_PERCENT = 5;
   const MAX_HEIGHT_PERCENT = 60;
 
@@ -146,9 +148,10 @@
     let popupH = 0;
     let stageW = 0;
     let stageH = 0;
-    // The page's layout width, remembered from the clone build so paint()
-    // never has to read a layout property on the pointer path.
-    let pageWidth = 0;
+    // The clone's own document height, measured when it is built. A narrower
+    // viewport reflows the page and changes how tall it is, so the offset the
+    // map points at is mapped onto the clone by fraction (see paint()).
+    let cloneHeight = 0;
 
     function measure() {
       popupW = Math.round(window.innerWidth * widthPercent / 100);
@@ -192,8 +195,13 @@
      */
     function buildPage() {
       const doc = document.scrollingElement || document.documentElement;
-      const layoutWidth = document.documentElement.clientWidth || window.innerWidth;
-      pageWidth = layoutWidth;
+      // The clone's viewport is the preview's own width, not the page's. This
+      // is what makes the page's responsive CSS do the work: a narrower
+      // viewport reflows the page exactly as the browser would if the window
+      // were that wide, instead of cropping the wide layout. `stageW / SCALE`
+      // is the document width the stage can show, so the frame is sized to
+      // it and nothing is cropped horizontally.
+      const layoutWidth = Math.max(1, Math.round(stageW / SCALE));
 
       let clone;
       try {
@@ -209,6 +217,13 @@
       )) {
         el.remove();
       }
+      // And neither is the room the rail reserves. vugluscr sets an inline
+      // `padding-right` on the page's body; left in the clone, the preview is
+      // a rail's width narrower than the page really is, and at preview
+      // widths that can even take a different breakpoint than the same page
+      // rendered clean. Removing the inline value restores whatever the
+      // page's own CSS says.
+      clone.style.removeProperty("padding-right");
 
       // Ids stay. They used to be stripped, on the theory that a clone
       // duplicating the page's ids would make the page's own getElementById
@@ -241,8 +256,10 @@
         frameWin = frameEl.contentWindow;
       }
       if (!frameReady) return false;
-      // The frame's viewport is the page's, so vh units and media queries in
-      // the clone resolve the way they do on the page.
+      // The frame's viewport width is the preview's, so media queries, `vw`
+      // and percentage layouts resolve the way they would in a window this
+      // size. Its height stays the page's, so `vh` units and full-height
+      // sections keep the shape they have on the page.
       frameEl.style.width = `${layoutWidth}px`;
       frameEl.style.height = `${window.innerHeight}px`;
 
@@ -258,6 +275,9 @@
           // An attribute name invalid in another namespace; never in HTML.
         }
       }
+      // vugluscr's own class is our chrome too; the clone holds no rail for
+      // it to describe.
+      frameDoc.documentElement.classList.remove("vugluscr_active", "vugluscr_embedded");
       frameDoc.documentElement.style.overflow = "hidden";
       const head = frameDoc.head;
       head.replaceChildren();
@@ -297,14 +317,33 @@
       wrap.style.padding = "0";
       wrap.style.border = "0";
       wrap.style.display = "block";
-      // The page's own layout width, so that percentage widths, tables and
-      // floats resolve exactly as they do on the page.
+      // The preview's own layout width, so percentage widths, tables and
+      // floats resolve for the viewport the preview actually has.
       wrap.style.width = `${layoutWidth}px`;
-      wrap.style.height = `${Math.max(1, doc.scrollHeight)}px`;
       wrap.appendChild(imported);
       frameDoc.body.appendChild(wrap);
 
       copyState(document.body, imported);
+
+      /**
+       * How tall the clone's own layout is.
+       *
+       * Not `scrollHeight` while the wrap has a height: pages can pin an
+       * absolutely positioned decorative element to the document's exact
+       * bottom (Wikipedia's `.vector-body`), and that pins the clone's
+       * scrollHeight to the page's height, hiding a reflow that is genuinely
+       * shorter. With the wrap at auto height the measurement is the in-flow
+       * content -- absolute boxes whose containing block is the viewport do
+       * not count -- and the wrap is then given the page's height back, so
+       * `height: 100%` inside the clone still has a document to resolve
+       * against.
+       */
+      function measureCloneHeight() {
+        wrap.style.height = "auto";
+        const measured = Math.max(1, wrap.scrollHeight);
+        wrap.style.height = `${Math.max(1, doc.scrollHeight)}px`;
+        return measured;
+      }
 
       // A viewport-pinned overlay has no document position: it is not anywhere
       // in the document, it is wherever the viewport is. Left in, a cookie
@@ -321,12 +360,17 @@
       buildMs = Math.round(performance.now() - t0);
       nodeCount = wrap.querySelectorAll("*").length;
 
+      // The clone's height after its own reflow; see measureCloneHeight().
+      cloneHeight = measureCloneHeight();
+
       page = wrap;
       builtAt = ctx.map.revision;
 
       // The frame's fonts load asynchronously, so the first layout used the
-      // fallback metrics. Redraw once they are ready.
+      // fallback metrics -- which also means the clone's height was measured
+      // with them. Re-measure and redraw once they are ready.
       frameDoc.fonts?.ready.then(() => {
+        cloneHeight = measureCloneHeight();
         if (visible) show(latestY);
       }).catch(() => {});
 
@@ -425,40 +469,31 @@
       // here writes a layout-affecting property and then reads one back, and
       // nothing queries the clone -- which is the whole page, and walking it
       // per pointer move cost more than the layout did.
-      const docHeight = Math.max(1, ctx.map.docHeight);
+      const pageDocHeight = Math.max(1, ctx.map.docHeight);
+      const cloneDocHeight = Math.max(1, cloneHeight || pageDocHeight);
 
-      // The document point that lands at the stage's top-left corner. A point p
-      // is drawn at SCALE * (p - t), so t = p puts p at the corner. Computed
-      // before the horizontal span, because the span is the content of the
-      // band this window will actually show.
-      let ty = docY - stageH / (2 * SCALE);
-      // Clamped, so the preview does not show blank space above the document
-      // for a cursor near the top, nor below it near the bottom.
-      ty = Math.max(0, Math.min(ty, Math.max(0, docHeight - stageH / SCALE)));
+      // The clone is the page rendered at the preview's width, so its height
+      // can differ from the page's -- a narrow viewport reflows the text,
+      // usually taller. Map the hovered *fraction* of the document: docY is a
+      // page offset and cloneY its counterpart in the reflowed clone. Exact
+      // correspondence would need the page re-rendered at the same width, and
+      // the fraction is what the map's proportional strip shows anyway.
+      const cloneY = docY * (cloneDocHeight / pageDocHeight);
 
-      // Kate's preview starts at xStart = 0 -- the left edge of the document,
-      // because an editor's document has no left margin. A web page does: a
-      // centred article column sits well right of x = 0, a float narrows the
-      // text beside it, and a sidebar is a second column. Anchoring the
-      // window's left edge at the hovered line's x (the old contentLeftNear)
-      // left dead space on one side, clipped the other -- Wikipedia's
-      // infobox -- and jumped sideways whenever a longer or shorter line
-      // passed the cursor.
-      //
-      // Centre the column instead: the hovered point is already centred
-      // vertically, and this centres the content of its band horizontally,
-      // which is what "anything in the magnified viewport should be centred"
-      // asks for. The span is passed the band the window will show, not a
-      // guess at it.
+      // The document point that lands at the stage's top-left corner. A point
+      // p is drawn at SCALE * (p - t), so t = p puts p at the corner.
+      let ty = cloneY - stageH / (2 * SCALE);
+      // Clamped, so the preview does not show blank space above the clone for
+      // a cursor near the top, nor below it near the bottom.
+      ty = Math.max(0, Math.min(ty, Math.max(0, cloneDocHeight - stageH / SCALE)));
+
+      // Horizontally there is nothing to choose: the frame's viewport is the
+      // width the stage shows, so its left edge is the window's left edge.
+      // A site that is laid out wider than its viewport (a fixed-width
+      // design) is clipped on the right exactly as a browser window that
+      // narrow would clip it.
       const visibleW = stageW / SCALE;
-      const span = ctx.map.contentSpanNear(docY, ty, stageH / SCALE);
-      let left = (span.left + span.right - visibleW) / 2;
-      // And never past the document's own edges: with the window centred on
-      // a column beside the page's left edge, half of it would otherwise be
-      // blank strip.
-      left = clamp(left, 0, Math.max(0, pageWidth - visibleW));
-
-      const tx = left - BUFFER / SCALE;
+      const tx = -BUFFER / SCALE;
 
       // scale() then translate(): the translate is in the clone's own
       // coordinates, so the pair maps document point t to the stage origin.
@@ -476,12 +511,11 @@
         lines: ctx.map.lines.length,
         boxes: buildMs,           // milliseconds spent building the clone
         nodes: nodeCount,
-        docHeight: Math.round(docHeight),
-        // Where the window starts, and the content span it was centred on.
-        // Read by the preview tests; the visible symptom of both open bugs
-        // was here rather than in the relative offsets.
-        left: Math.round(left),
-        span: [Math.round(span.left), Math.round(span.right)],
+        docHeight: Math.round(pageDocHeight),
+        // What the clone's own viewport and document height came out as, so a
+        // test can tell a reflow from a crop.
+        cloneHeight: Math.round(cloneDocHeight),
+        frameWidth: Math.round(visibleW),
         // The map revision the clone was built from. When this is behind
         // ctx.map.revision the preview is knowingly stale -- see SETTLE_MS.
         builtAt,

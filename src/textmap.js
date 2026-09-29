@@ -72,12 +72,6 @@
   // the raster), Wikipedia 0.44, a single-column article 0.03.
   const BLOCK_SPREAD_FRACTION = 0.75;
 
-  // How many lines either side of the hovered offset the preview looks at
-  // when it picks the column to centre. Wide on purpose: narrow enough and
-  // the window sits inside one tall table, and the preview centres on the
-  // table rather than on the column it is part of.
-  const SPAN_WINDOW_LINES = 40;
-
   // What becomes a block: the boxes a person navigates by. Links and images
   // are drawn as themselves; everything else is a text area.
   const BLOCK_SELECTOR = [
@@ -226,10 +220,6 @@
             y: rects[i].top + scrollY,
             height: rects[i].height,
             x: rects[i].left + scrollX,
-            // The right edge is what makes the preview able to centre a
-            // column: text alone cannot tell a 300px sidebar from a 900px
-            // article until the box is measured.
-            right: rects[i].right + scrollX,
             text: style.preserve ? raw : renderedText(raw),
             color: style.color,
             family: style.family,
@@ -565,60 +555,6 @@
     /** Left edge of the main content column, robustly. */
     contentLeftOf() {
       return this.contentLeft;
-    }
-
-    /**
-     * The horizontal span of the content *the preview window will show*.
-     *
-     * A single contentLeft is right for a text document, where every line
-     * starts at the same x, and for a page with one column. It is wrong for a
-     * page with two, and for a page with a float: the lead beside Wikipedia's
-     * infobox is wrapped to a narrow column, and anchoring the window's left
-     * edge there clipped the infobox off the right and left a quarter of the
-     * window blank on the left.
-     *
-     * The span is the union of the line boxes that overlap the window
-     * vertically, so the preview centres everything it is about to show. The
-     * 2nd and 98th percentiles drop a stray fragment -- absolutely positioned
-     * badges and the like -- without dropping a real second column or a
-     * float. The vertical band is the one paint() maps to the stage, and the
-     * fallback window covers a blank run or a page shorter than the window.
-     */
-    contentSpanNear(docY, top, height) {
-      const lines = this.lines;
-      if (!lines.length) {
-        return { left: this.contentLeft, right: this.contentLeft + 1 };
-      }
-      const bandTop = top == null ? docY : top;
-      const bandBottom = bandTop + (height == null ? 0 : height);
-
-      // Lines that overlap the window vertically. indexAtY gives the last
-      // line starting at or above bandTop; walk back while earlier boxes
-      // still extend into the band.
-      let start = this.indexAtY(bandTop);
-      while (start > 0 && lines[start - 1].y + lines[start - 1].height > bandTop) {
-        start--;
-      }
-      let end = start;
-      while (end < lines.length && lines[end].y < bandBottom) end++;
-
-      if (end - start < 4) {
-        const at = this.indexAtY(docY);
-        start = Math.max(0, at - SPAN_WINDOW_LINES);
-        end = Math.min(lines.length, at + SPAN_WINDOW_LINES + 1);
-      }
-
-      const lefts = [];
-      const rights = [];
-      for (let i = start; i < end; i++) {
-        lefts.push(lines[i].x);
-        rights.push(lines[i].right ?? lines[i].x);
-      }
-      lefts.sort((a, b) => a - b);
-      rights.sort((a, b) => a - b);
-      const pick = (sorted, q) =>
-        sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
-      return { left: pick(lefts, 0.02), right: pick(rights, 0.98) };
     }
 
     /** Cheap upper bound on line count, to pick simple mode before collecting. */

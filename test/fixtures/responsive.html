@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrollPeak responsive fixture</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0; padding: 2rem 1rem 6rem;
+         color: #1c1c1e; background: #fdfdfc; }
+  #wide, #narrow { display: none; }
+  /* The page's window in the tests is 1280 wide; the preview at the default
+     50% is laid out at 848. The breakpoint sits between them, so the two
+     renderings must disagree: the page gets the wide layout and the clone the
+     narrow one. That is the claim -- the preview is the page rendered at its
+     own viewport, not a crop of the page's. */
+  @media (max-width: 1000px) { #narrow { display: block; } }
+  @media (min-width: 1001px) { #wide { display: block; } }
+  h1 { color: #10233f; }
+  h2 { color: #1d4e89; }
+  .spacer { height: 45vh; }
+</style>
+</head>
+<body>
+<h1>Responsive fixture</h1>
+<div id="wide">
+  <h2>The wide layout</h2>
+  <p>Shown in a window wider than 1000px, which is what the page itself is
+  being read in.</p>
+</div>
+<div id="narrow">
+  <h2>The narrow layout</h2>
+  <p>Shown in a preview viewport narrower than 1000px. If the preview were
+  still a crop of the wide layout, this would never be drawn.</p>
+</div>
+<div class="spacer"></div>
+<h2>Lower down</h2>
+<p>Enough content that the page scrolls while the preview is open.</p>
+</body>
+</html>
