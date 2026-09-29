@@ -6,7 +6,9 @@ Kate's map is a text raster, and on a long document it stays one. On a short
 one the raster is stretched until every line is a band of blobs, so the map
 switches to semantic blocks: text areas filled black or white (whichever
 contrasts with the strip), links in the page's own link colour, images as
-hollow 1px outlines. That switch and that vocabulary are what this pins down.
+hollow 1px outlines, and form controls as boxes in the browser's own field,
+face and border colours. That switch and that vocabulary are what this pins
+down.
 
     python3 test/verify_blocks.py [extension-dir]
 """
@@ -23,6 +25,7 @@ LONG = "/long.html"        # ~400 lines: Kate's raster
 GRAPHICS = "/graphics.html"  # short, with images
 BLOCKS = "/blocks.html"    # short, with one big image and a link
 COLUMNS = "/columns.html"  # two columns, long enough for the raster
+CONTROLS = "/controls.html"  # short, mostly form controls
 
 PROBE = r"""
 const map = document.querySelector(".scrollpeak-map");
@@ -81,6 +84,47 @@ if (a) {
   const r = a.getClientRects()[0];
   out.link = { left: r.left + scrollX, top: r.top + scrollY,
                w: r.width, h: r.height };
+}
+
+// Form controls: every one of these should leave a mark at its own place. A
+// checkbox is a pixel of map, so sample a small region around the projected
+// centre rather than a single pixel.
+const stripRgb = (out.strip.match(/\d+/g) || []).slice(0, 3).map(Number);
+function differsFromStrip(r) {
+  let hits = 0;
+  const [cx, cy] = r;
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -2; dy <= 2; dy++) {
+      const p = pixel(cx + dx, cy + dy);
+      if (p[3] > 0 &&
+          Math.abs(p[0] - stripRgb[0]) +
+          Math.abs(p[1] - stripRgb[1]) +
+          Math.abs(p[2] - stripRgb[2]) > 24) {
+        hits++;
+      }
+    }
+  }
+  return hits;
+}
+out.controls = {};
+if (out.span && out.docRect) {
+  for (const id of ["agree", "one", "vol", "choice", "notes", "total"]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    const [cx, cy] = project(r.left + scrollX + r.width / 2,
+                             r.top + scrollY + r.height / 2);
+    // The top edge of the block, where the control's border is drawn. The
+    // browser-default face and border are different colours, so a control
+    // that is bigger than a pixel shows two.
+    const [, ey] = project(r.left + scrollX + r.width / 2, r.top + scrollY);
+    out.controls[id] = {
+      w: Math.round(r.width), h: Math.round(r.height),
+      hits: differsFromStrip([cx, cy]),
+      centre: pixel(cx, cy),
+      edge: pixel(cx, ey),
+    };
+  }
 }
 
 out.samples = {};
@@ -159,6 +203,25 @@ def main():
                   d["blocks"]["text"] >= 100 and d["blocks"]["link"] >= 50,
                   json.dumps(d["blocks"]))
 
+            print("\nform controls are tracked and drawn")
+            d = page(CONTROLS)
+            check("renderer is blocks", d["mode"] == "blocks", str(d["mode"]))
+            controls = d["controls"]
+            check("all the controls were found", len(controls) == 6,
+                  ", ".join(sorted(controls)))
+            check("they are collected as controls, not text",
+                  d["blocks"]["control"] == 8, json.dumps(d["blocks"]))
+            # The browser's face and border are different colours, and the
+            # renderer keeps both, so a field is a bordered box rather than a
+            # flat bar of text.
+            sel = controls["choice"]
+            check("a field is a face with its own border",
+                  sel["centre"] != sel["edge"],
+                  f"face={sel['centre']} border={sel['edge']}")
+            for cid, c in sorted(controls.items()):
+                check(f"{cid} leaves a mark", c["hits"] >= 1,
+                      f"{c['w']}x{c['h']}px, {c['hits']} painted nearby")
+
             print("\nimages are blocks, drawn hollow")
             d = page(BLOCKS)
             check("renderer is blocks", d["mode"] == "blocks", str(d["mode"]))
@@ -189,7 +252,7 @@ def main():
     if failures:
         print("FAILED: " + ", ".join(failures))
         return 1
-    print("the map renders text when long and blocks when zoomed")
+    print("the map renders text when long, blocks when zoomed, controls too")
     return 0
 
 

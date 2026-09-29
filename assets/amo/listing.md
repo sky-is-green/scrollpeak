@@ -21,27 +21,28 @@ section, click to jump.
 **The whole page beside you, always.**
 
 ScrollPeak replaces the scrollbar with a miniature map of the page: its text,
-its headings, its links, its code, drawn in the page's own colours. It is a
-port of the scrollbar minimap from [Kate](https://kate-editor.org), the KDE
-text editor, where finding a function in a 5,000-line file is a glance rather
-than a hunt.
+its headings, its links, its code and its controls, drawn in the page's own
+colours. It is a port of the scrollbar minimap from
+[Kate](https://kate-editor.org), the KDE text editor, where finding a function
+in a 5,000-line file is a glance rather than a hunt.
 
 The web has no equivalent. On a long article or a documentation page you
 scroll, stop, read, and scroll again — and usually overshoot. ScrollPeak shows
 you where the rest of the page is before you go there.
 
-- **Hover** the strip to preview the text under the cursor.
+- **Hover** the strip to preview the region under the cursor.
 - **Move** across it and the preview follows, like a lens down the page.
 - **Click** to jump there. **Drag** to scroll continuously.
 - **Peek** parks the rail off-screen until you approach it.
 - **Minimap only** drops the track and keeps the map.
 - On short or multi-column pages the map turns into a block diagram — links in
-  their own colour, pictures as outlines — so it stays clean instead of
-  blurring.
+  their own colour, pictures as outlines, form controls as boxes in their
+  browser colours — so it stays clean instead of blurring.
 - On pages that are mostly pictures — a video player, a card grid — ScrollPeak
   steps aside and leaves the browser's own scrollbar, rather than drawing a
   map that reads worse than the page.
-- The map's width, its colours and a per-site exclusion list are all settings.
+- The map's width, the preview's size, its colours and a per-site exclusion
+  list are all settings.
 - The default strip colour follows your Firefox theme.
 
 Everything is drawn locally, from the page you are already looking at.

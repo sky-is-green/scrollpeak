@@ -9,10 +9,9 @@
     <main class="page">
       <h1>ScrollPeak</h1>
       <p class="lede">
-        A scrollbar minimap for Firefox, ported from
-        <a href="https://kate-editor.org">Kate</a>. The scrollbar settings are
-        Kate's, mapped one for one; the preview's size is an addition, because
-        Kate hard-codes his at half the window by a fifth.
+        A scrollbar minimap for Firefox. It replaces the scrollbar with a
+        miniature map of the page — text, headings, links and controls, in the
+        page's own colours — and previews the region under the pointer on hover.
       </p>
 
       <section>
@@ -27,7 +26,7 @@
         </label>
 
         <fieldset class="field field--radio">
-          <legend>Show the scrollbar</legend>
+          <legend>Scrollbar</legend>
           <label
             ><input type="radio" name="scrollbarMode" value="always" />
             <span
@@ -39,13 +38,9 @@
             ><input type="radio" name="scrollbarMode" value="whenNeeded" />
             <span
               >When needed
-              <small>Only when the page actually scrolls. Kate calls this
-              “show when needed”.</small></span
+              <small>Only when the page actually scrolls. The default.</small
+              ></span
             ></label
-          >
-          <label
-            ><input type="radio" name="scrollbarMode" value="never" />
-            <span>Never <small>No rail at all.</small></span></label
           >
         </fieldset>
 
@@ -54,10 +49,7 @@
           <input type="range" id="minimapWidth" min="20" max="200" step="2" />
           <output id="minimapWidth-out"></output>
         </label>
-        <p class="hint">
-          Kate's default is 60px, range 0–999. It is capped at 200 here because
-          beyond that it eats the page.
-        </p>
+        <p class="hint">Default: 70px. Maximum: 200px.</p>
       </section>
 
       <section>
@@ -66,10 +58,10 @@
         <label class="field">
           <input type="checkbox" id="showMagnifier" />
           <span>
-            Show a preview of the text when hovering the minimap
+            Show a preview of the page when hovering the minimap
             <small
-              >Kate calls this the scrollbar preview, and it defaults to
-              on.</small
+              >The hovered region, rendered in an iframe as wide as the preview
+              itself, so the page's own responsive layout applies.</small
             >
           </span>
         </label>
@@ -86,25 +78,8 @@
           <output id="magnifierHeight-out"></output>
         </label>
         <p class="hint">
-          Both are a percentage of the window. Kate draws the preview at half
-          the width and a fifth of the height, which is where they start.
+          Both are a percentage of the window. Defaults: 30% wide, 20% tall.
         </p>
-      </section>
-
-      <section>
-        <h2>Marks</h2>
-
-        <label class="field">
-          <input type="checkbox" id="showMarkers" />
-          <span>
-            Mark heading positions on the track
-            <small>
-              Kate marks bookmarks and breakpoints here, and defaults this
-              off. On a web page it can only be a guess about what matters, so
-              it stays off until you ask for it.
-            </small>
-          </span>
-        </label>
       </section>
 
       <section>
@@ -149,15 +124,8 @@
         </label>
         <p class="hint" id="mapBackground-hint"></p>
 
-        <label class="field field--colour">
-          <span>Mark colour</span>
-          <input type="color" id="markColour" />
-          <button type="button" id="markColour-reset">Use the page's</button>
-        </label>
-        <p class="hint" id="markColour-hint"></p>
-
         <label class="field field--range">
-          <span>Darken the page background by</span>
+          <span>Minimap background shade</span>
           <input type="range" id="darkenAmount" min="0.2" max="0.95" step="0.05" />
           <output id="darkenAmount-out"></output>
         </label>
@@ -221,7 +189,8 @@
           <button type="button" class="linkbtn" data-url="https://github.com/sky-is-green/scrollpeak">Source on GitHub</button>
           <button type="button" class="linkbtn" data-url="https://github.com/sky-is-green/scrollpeak/issues">Report an issue</button>
           <button type="button" class="linkbtn" data-url="https://kate-editor.org">Kate, the original</button>
-          <button type="button" class="linkbtn" data-url="https://github.com/jurijsk/vugluscr">vugluscr, the scrollbar engine</button>
+          <button type="button" class="linkbtn" data-url="https://github.com/jurijsk/vugluscr"
+                  title="vugluscr, the scrollbar engine">vugluscr</button>
           <button type="button" class="linkbtn" id="copy-settings">Copy settings as JSON</button>
         </nav>
         <p class="hint" id="copy-note" hidden>Copied to the clipboard.</p>

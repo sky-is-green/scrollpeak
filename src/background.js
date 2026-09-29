@@ -3,31 +3,28 @@
 // Owns preferences and nothing else. Content scripts own the DOM; the worker
 // owns settings, so a background restart costs the user nothing visible.
 //
-// The defaults are Kate's. ktexteditor's KateViewConfig, Appearance > Borders:
+// The defaults are ours, with Kate's arrangement where it still fits:
 //
-//   ScrollBarMiniMapWidth   60    (kateconfig.cpp; note the constructor says
-//                                  40, but kateview.cpp applies 60 at init)
+//   ScrollBarMiniMapWidth   70    (Kate's is 60; ours is a little wider)
 //   ShowScrollBarPreview    true
-//   ShowScrollBarMarks      false
-//   ShowScrollbars          AlwaysOn | ShowWhenNeeded | AlwaysOff
+//   Scrollbars              when needed, or always
 //
-// Kate also has ShowScrollBarMiniMapAll, but katedialogs.cpp hides its own
-// checkbox with the comment "temporary until the feature is done", so it is not
-// a setting anyone can rely on and is not ported.
+// Kate also has ShowScrollBarMarks (bookmarks and breakpoints), which has no
+// web analogue and is gone, and a "never" scrollbar mode, which the global
+// enabled switch above supersedes.
 
 const DEFAULT_SETTINGS = {
   // Global kill switch. Turning this off is not uninstalling.
   enabled: true,
 
-  // Kate's ShowScrollbars. "whenNeeded" is Kate's ShowWhenNeeded: show the
-  // rail only when the page actually scrolls.
-  //   always    - show even on a page that fits
-  //   whenNeeded- show only when there is something to scroll
-  //   never     - do not show the rail
-  scrollbarMode: "always",
+  // When to show the rail. "whenNeeded" is Kate's ShowWhenNeeded: show it
+  // only when the page actually scrolls. "never" is accepted from old
+  // profiles and treated as disabled (see isEnabledForUrl), but is no longer
+  // offered: the enabled switch is the off switch.
+  scrollbarMode: "whenNeeded",
 
-  // Kate's ScrollBarMiniMapWidth.
-  minimapWidth: 60,
+  // How wide the minimap strip is.
+  minimapWidth: 70,
 
   // Kate's ShowScrollBarPreview: the hover preview of the text under the
   // cursor, which is the feature this whole project exists for.
@@ -35,14 +32,9 @@ const DEFAULT_SETTINGS = {
 
   // The preview's size, as a percentage of the window. Kate hard-codes half
   // the view's width by a fifth of its height and offers no setting, so the
-  // defaults are his and the settings are an extension.
-  magnifierWidth: 50,
+  // settings are an extension.
+  magnifierWidth: 30,
   magnifierHeight: 20,
-
-  // Kate's ShowScrollBarMarks, default off. In Kate these are bookmarks and
-  // breakpoints; here they are heading positions, which is a guess about what
-  // matters on an arbitrary page, so it stays opt-in.
-  showMarkers: false,
 
   // --- below here: web-specific, no Kate equivalent ---
 
@@ -52,12 +44,6 @@ const DEFAULT_SETTINGS = {
   // A page's text colours are chosen against the page, not against our
   // strip, so the marks are then forced to contrast with whatever we get.
   mapBackground: "",
-
-  // One colour for every mark, or "" for the page's own text colours. The
-  // page's own is Kate's arrangement and the reason a heading reads differently
-  // from body text in the strip; this is for a monochrome strip, which some
-  // people want and which is easier to read at 60px.
-  markColour: "",
 
   // How far to darken the browser's background for the default strip colour.
   darkenAmount: 0.82,
@@ -92,6 +78,8 @@ function isListed(host, list) {
 
 function isEnabledForUrl(settings, url) {
   if (!settings.enabled) return false;
+  // Profiles from before the UI dropped "never" may still carry it; honour
+  // the user's old choice rather than silently switching them back on.
   if (settings.scrollbarMode === "never") return false;
 
   let host;

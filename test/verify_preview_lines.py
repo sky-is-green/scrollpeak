@@ -12,15 +12,13 @@ iframe the test opens for itself -- rather than against the page's own
 (likely different) layout.
 
 What must still hold against the page is the content: the same elements, once
-each, with the page's own relative spacing and sizes whenever the content
-column is narrower than both viewports.
+each. Everything geometric is checked against a reference iframe of the same
+width, because the clone is the page rendered at the preview's own viewport
+and the page itself is rendered at a different one.
 
-It also checks the two things relative offsets cannot see, both of which were
-real Wikipedia bugs: absolute document placement (a transform origin other
-than the top-left keeps every offset exact and still shows the wrong part of
-the page) and the clone's ids (sites place layout with id-keyed rules, and
-stripping them reflows the clone). A fixture with a media-query breakpoint
-between the page's width and the preview's proves the reflow itself.
+It also checks the ids (sites place layout with id-keyed rules, and stripping
+them reflows the clone). A fixture with a media-query breakpoint between the
+page's width and the preview's proves the reflow itself.
 
     python3 test/verify_preview_lines.py [extension-dir]
 """
@@ -55,35 +53,14 @@ function report() {
   const pop = document.querySelector(".scrollpeak-magnifier");
   const frame = pop.querySelector(".scrollpeak-magnifier__frame");
   const idoc = frame.contentDocument;
-  // The clone lives in the preview's frame, so querying this document for
-  // SEL returns only the page's own copy -- which is what the pairs want.
+  // The clone lives in the preview's frame, and `page` is the page's own copy
+  // of the same elements, for the "nothing missing, nothing twice" checks.
   const page = [...document.querySelectorAll(SEL)];
   const clone = [...idoc.querySelectorAll(SEL)];
-  const n = Math.min(page.length, clone.length);
   const wrap = idoc.querySelector(".scrollpeak-magnifier__page");
   const tm = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(wrap.style.transform);
   const tx = tm ? -parseFloat(tm[1]) : 0;
   const ty = tm ? -parseFloat(tm[2]) : 0;
-  const pairs = [];
-  // Offsets, not positions: the frame is laid out at a different width from
-  // the page, so absolute positions legitimately differ whenever the content
-  // reflows. What must hold -- for content narrower than both viewports, as
-  // the fixtures' is -- is that the *distances* between elements are the
-  // page's, scaled by 0.75.
-  const ra = page[0].getBoundingClientRect();
-  const rb = clone[0].getBoundingClientRect();
-  for (let i = 0; i < n; i++) {
-    const a = page[i].getBoundingClientRect();
-    const b = clone[i].getBoundingClientRect();
-    if (a.width < 1 || b.width < 1) continue;
-    pairs.push({
-      tag: page[i].tagName,
-      text: (page[i].textContent || "").trim().slice(0, 22),
-      dx: (b.left - rb.left) - (a.left - ra.left) * SCALE_ARG,
-      dy: (b.top - rb.top) - (a.top - ra.top) * SCALE_ARG,
-      pw: a.width, cw: b.width, ph: a.height, ch: b.height,
-    });
-  }
 
   // The stage's own width is the claim the frame must meet: at 0.75 scale,
   // stageW pixels of screen show stageW / SCALE document pixels, and the
@@ -156,7 +133,7 @@ function report() {
     }
     done({
       open: pop.classList.contains("is-open"),
-      pageCount: page.length, cloneCount: clone.length, pairs,
+      pageCount: page.length, cloneCount: clone.length,
       stageText: idoc.body.textContent,
       // Does the preview contain a second copy of a string the page has once?
       dupes: ["Colour as structure", "Colour is doing most of the work here",
@@ -316,36 +293,13 @@ def main():
           "; ".join(f"{x['s'][:22]!r} x{x['n']}" for x in bad) or
           f"{len(d['dupes'])} sampled, all 1")
 
-    pairs = d["pairs"]
-    check("there are elements to compare", len(pairs) >= 8, f"{len(pairs)} pairs")
-
-    # Offsets between elements are the page's, scaled. This is the claim: the
-    # preview is the page's layout, not a reconstruction of it.
-    worst = 0.0
-    worst_of = ""
-    for p in pairs:
-        sx = max(abs(p["dx"]), abs(p["dy"]))
-        if sx > worst:
-            worst, worst_of = sx, f"{p['tag']} {p['text']!r}"
-    # The pair subtracted is itself measured, so both sides carry the same
-    # sub-pixel rounding; anything above a pixel is a real disagreement.
-    check("element offsets are the page's, scaled by 0.75", worst <= 1.0,
-          f"worst {worst:.2f}px of stage error ({worst_of})")
-
-    sizerr = max(
-        (abs(p["cw"] - p["pw"] * SCALE) + abs(p["ch"] - p["ph"] * SCALE) for p in pairs),
-        default=0.0,
-    )
-    check("element sizes are the page's, scaled by 0.75", sizerr <= 1.0,
-          f"worst {sizerr:.2f}px")
-
     check("the clone is one subtree, not many pieces", d["nodeCount"] > 20,
           f"{d['nodeCount']} nodes")
 
-    # The new model, and the two halves of the old Wikipedia report. Relative
-    # offsets alone cannot see any of it: a wrong transform origin keeps every
-    # *distance* exact while showing the wrong part of the page, and a frame
-    # laid out at the page's width keeps every offset exact while cropping.
+    # The new model, and the two halves of the old Wikipedia report: a wrong
+    # transform origin keeps every *distance* exact while showing the wrong
+    # part of the page, and a frame laid out at the page's width keeps every
+    # offset exact while cropping.
     print("\nthe frame is the preview's own viewport")
     check("the frame width is the width the stage shows",
           abs(d["frameWidth"] - d["expectedWidth"]) <= 1,

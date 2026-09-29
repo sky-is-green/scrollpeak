@@ -73,11 +73,14 @@
   const BLOCK_SPREAD_FRACTION = 0.75;
 
   // What becomes a block: the boxes a person navigates by. Links and images
-  // are drawn as themselves; everything else is a text area.
+  // are drawn as themselves; everything else is a text area. Form controls
+  // are here so a settings page, a form or a search panel reads as the
+  // controls it is made of rather than as a handful of stray labels.
   const BLOCK_SELECTOR = [
     "p", "li", "dt", "dd", "h1", "h2", "h3", "h4", "h5", "h6",
     "blockquote", "pre", "figcaption", "caption", "td", "th",
-    "summary", "button", "label", "a[href]", "img",
+    "summary", "button", "label", "input", "select", "textarea", "output",
+    "a[href]", "img",
   ].join(", ");
 
   // -------------------------------------------------------------- the media
@@ -92,6 +95,16 @@
     "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE",
     "CANVAS", "IFRAME", "OBJECT", "EMBED", "SVG",
   ]);
+
+  // What the block renderer draws as a control rather than as text.
+  const CONTROL_TAGS = new Set(["INPUT", "SELECT", "TEXTAREA", "BUTTON"]);
+
+  // Firefox's default control colours, measured on an unstyled form (156):
+  // ButtonFace and ButtonBorder. Used when the control itself paints neither
+  // -- a checkbox, radio or slider is drawn by the browser and reports a
+  // transparent background and no border.
+  const CONTROL_FACE = [233, 233, 237];
+  const CONTROL_BORDER = [143, 143, 157];
 
   class TextMap {
     constructor({ width, height }) {
@@ -336,7 +349,10 @@
      *
      * Links use their line fragments rather than one bounding box, so a link
      * that wraps is two blue bars instead of a rectangle covering the text
-     * between them. Images are atomic. Everything else is a text area.
+     * between them. Images are atomic. Form controls keep their own field or
+     * face colour and their border, so a checkbox or a slider reads as a
+     * control rather than as another bar of text. Everything else is a text
+     * area.
      */
     #collectBlocks(root, scrollX, scrollY, maxY) {
       const blocks = [];
@@ -353,11 +369,27 @@
           continue;
         }
 
-        const kind = el.tagName === "IMG" ? "image"
-          : el.tagName === "A" ? "link" : "text";
+        const tag = el.tagName;
+        const kind = tag === "IMG" ? "image"
+          : tag === "A" ? "link"
+          : CONTROL_TAGS.has(tag) ? "control" : "text";
         const rects = kind === "link"
           ? Array.from(el.getClientRects())
           : [el.getBoundingClientRect()];
+
+        // A control's own colours, as the browser paints it: the field or
+        // button face, and the border. A natively drawn widget -- checkbox,
+        // radio, slider -- reports neither, because the browser paints those
+        // itself, so those fall back to Firefox's defaults in #paintBlocks().
+        // Strings, not parsed triples: the painter parses them again, the
+        // same way it does for a link's colour.
+        const face = kind === "control" && opaqueRgb(cs.backgroundColor)
+          ? cs.backgroundColor
+          : null;
+        const border = kind === "control" && cs.borderTopStyle !== "none" &&
+          opaqueRgb(cs.borderTopColor)
+          ? cs.borderTopColor
+          : null;
 
         for (const r of rects) {
           if (r.width < 1 || r.height < 1) continue;
@@ -369,13 +401,15 @@
             w: r.width,
             h: r.height,
             kind,
-            colour: kind === "link" ? cs.color : null,
+            colour: kind === "link" ? cs.color : face,
+            border,
           });
         }
       }
 
-      // Text areas first, then links, then image outlines on top of both.
-      const order = { text: 0, link: 1, image: 2 };
+      // Text first, then controls over it, then links, then image outlines on
+      // top of everything.
+      const order = { text: 0, control: 1, link: 2, image: 3 };
       blocks.sort((a, b) => order[a.kind] - order[b.kind]);
 
       this.blocks = blocks;
@@ -398,9 +432,8 @@
      * `theme` is the palette the background resolved from the installed Firefox
      * theme, or null. See resolveColours().
      */
-    setAppearance({ mapBackground, markColour, markContrast, darkenAmount, theme } = {}) {
+    setAppearance({ mapBackground, markContrast, darkenAmount, theme } = {}) {
       this._mapBackgroundPref = mapBackground || "";
-      this._markColourPref = markColour || "";
       this.markContrast = Number(markContrast) || 3;
       this._darkenAmount = darkenAmount == null ? 0.82 : Number(darkenAmount);
       this.theme = theme || null;
@@ -521,24 +554,22 @@
       this._mapBackgroundRgb = bg;
       this.mapBackground = `rgb(${bg.join(",")})`;
 
-      // A single colour for every mark, if the user asked for one. Otherwise
-      // the page's own, which is Kate's arrangement and the reason a heading
-      // reads differently from body text in the strip.
-      const forced = resolveColor(this._markColourPref);
-      const fixedForced = forced && ensureContrast(forced, bg, this.markContrast);
-
+      // The page's own text colours, each one nudged until it reads against
+      // the strip. That is the reason a heading looks different from body
+      // text in the map; a page chose those colours, and they are better than
+      // anything we would pick.
       this.markColours.clear();
       for (const line of this.lines) {
         if (this.markColours.has(line.color)) continue;
-        const rgb = fixedForced || parseRgb(line.color);
+        const rgb = parseRgb(line.color);
         if (!rgb) continue;
         const fixed = ensureContrast(rgb, bg, this.markContrast);
         this.markColours.set(line.color, `rgb(${fixed.join(",")})`);
       }
 
-      // One palette for everything the rail draws, so the strip, the thumb and
-      // the markers cannot end up in three different colour schemes. `ink` is a
-      // colour that reads against the strip, used for the rail's own chrome.
+      // One palette for everything the rail draws, so the strip, the thumb
+      // and the rail's own chrome cannot end up in three different colour
+      // schemes. `ink` is a colour that reads against the strip.
       const ink = ensureContrast(
         resolveColor(this.theme?.text) || [255, 255, 255],
         bg,
@@ -792,7 +823,7 @@
       let modeKey = "text";
       let counts = null;
       if (this.blockMode) {
-        counts = { text: 0, link: 0, image: 0 };
+        counts = { text: 0, control: 0, link: 0, image: 0 };
         for (const b of this.blocks) counts[b.kind]++;
         modeKey = `blocks:${JSON.stringify(counts)}:` +
           `${Math.round(this.blockLeft)}:${Math.round(this.blockRight)}`;
@@ -818,6 +849,14 @@
         this.canvas.dataset.docRect = JSON.stringify({
           top: Math.round(docTop), height: Math.round(docHeight),
         });
+      }
+      // The document height the blocks were collected against, published for
+      // the tests: a probe comparing live page rects with drawn ones needs to
+      // know whether the map is stale.
+      const dhKey = String(Math.round(this.docHeight));
+      if (dhKey !== this._dhKey) {
+        this._dhKey = dhKey;
+        this.canvas.dataset.docHeight = dhKey;
       }
       // Published for the alignment test and for debugging a site where the
       // indicators look wrong. Only touched when it moves, because paint()
@@ -872,7 +911,8 @@
 
     /**
      * The block renderer: text areas as contrast fills, links in their own
-     * colour, images as hollow outlines.
+     * colour, images as hollow outlines, controls as boxes in their own
+     * field, face and border colours.
      *
      * Like the raster, this maps document coordinates onto the drawn rect, so
      * the viewport band and the preview's document offsets still line up with
@@ -901,6 +941,22 @@
             parseRgb(b.colour) || [59, 110, 165], bgRgb, this.markContrast);
           ctx.fillStyle = `rgb(${rgb.join(",")})`;
           ctx.fillRect(x, y, w, h);
+        } else if (b.kind === "control") {
+          // A control is the browser's own field or button face, outlined
+          // with its own border -- or Firefox's defaults when the browser
+          // paints the widget itself and reports neither. Both colours are
+          // pushed to contrast: the face against the strip, the border
+          // against the face, so a control stays a visible box on any strip
+          // instead of merging into the text around it.
+          const face = ensureContrast(
+            parseRgb(b.colour) || CONTROL_FACE, bgRgb, this.markContrast);
+          const border = ensureContrast(
+            parseRgb(b.border) || CONTROL_BORDER, face, this.markContrast);
+          ctx.fillStyle = `rgb(${face.join(",")})`;
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = `rgb(${border.join(",")})`;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, h - 1));
         } else if (b.kind === "image") {
           // Hollow, so it reads as a picture rather than as another block of
           // text. The hole is painted first because an image inside a
@@ -1038,6 +1094,24 @@
     const xs = lines.map((l) => l.x).sort((a, b) => a - b);
     if (!xs.length) return 0;
     return xs[Math.floor(xs.length * 0.05)] || 0;
+  }
+
+  /**
+   * parseRgb, but null when the colour is fully transparent.
+   *
+   * A control with no background of its own computes to `rgba(0, 0, 0, 0)`,
+   * and parseRgb ignores alpha, so without this a checkbox would be painted
+   * black. Semi-transparent counts as painted, the same reading as
+   * pageBackground().
+   */
+  function opaqueRgb(value) {
+    const rgb = parseRgb(value);
+    if (!rgb) return null;
+    const alpha = /rgba?\([^)]*?,\s*([\d.]+)\s*\)$/.exec(value || "");
+    // The regex matches the last component of rgb() too, where it is the
+    // blue channel; only an exact 0 matters, and blue 0 is not transparency.
+    if (alpha && Number(alpha[1]) === 0) return null;
+    return rgb;
   }
 
   function renderedText(slice) {

@@ -5,12 +5,12 @@
 
 const $ = (id) => document.getElementById(id);
 
-const CHECKBOXES = ["enabled", "showMagnifier", "showMarkers", "hideTrack", "hideWhenIdle"];
+const CHECKBOXES = ["enabled", "showMagnifier", "hideTrack", "hideWhenIdle"];
 const RANGES = [
   "minimapWidth", "magnifierWidth", "magnifierHeight",
   "darkenAmount", "markContrast", "peekZone", "peekDelay",
 ];
-const MODES = ["always", "whenNeeded", "never"];
+const MODES = ["always", "whenNeeded"];
 
 function formatRange(id, value) {
   if (id === "minimapWidth" || id === "peekZone") return `${value}px`;
@@ -122,44 +122,25 @@ function wireColour(settings) {
       systemDark: matchMedia("(prefers-color-scheme: dark)").matches,
       amount: Number(current.darkenAmount),
     });
-    const marks = C.resolveStripBackground({
-      chosen: current.markColour,
-      // With no page to read, the marks' own default is the theme's text
-      // colour, or the far end of the strip.
-      theme: current.markColour ? null : theme?.text || current.markColour,
-      page: "",
-      systemDark: false,
-      amount: 0,
-    });
 
     const stripInput = $("mapBackground");
-    const markInput = $("markColour");
     stripInput.value = current.mapBackground || rgbHex(strip.rgb);
-    markInput.value = current.markColour || rgbHex(marks.rgb);
     $("mapBackground-hint").textContent = current.mapBackground
       ? `Your colour, ${current.mapBackground}.`
       : `Following ${strip.source}: ${rgbHex(strip.rgb)}.`;
-    $("markColour-hint").textContent = current.markColour
-      ? `One colour for every mark, ${current.markColour}.`
-      : "The page's own text colours, each nudged until it contrasts.";
   };
 
-  for (const [input, reset, key] of [
-    ["mapBackground", "mapBackground-reset", "mapBackground"],
-    ["markColour", "markColour-reset", "markColour"],
-  ]) {
-    $(input).addEventListener("change", async () => {
-      await persist({ [key]: $(input).value });
-      await paint();
-    });
-    $(reset).addEventListener("click", async () => {
-      await persist({ [key]: "" });
-      await paint();
-    });
-  }
+  $("mapBackground").addEventListener("change", async () => {
+    await persist({ mapBackground: $("mapBackground").value });
+    await paint();
+  });
+  $("mapBackground-reset").addEventListener("click", async () => {
+    await persist({ mapBackground: "" });
+    await paint();
+  });
 
-  // The two amounts that move the resolved colour, so the swatch tracks the
-  // sliders as they move rather than only on release.
+  // The one amount that moves the resolved colour, so the swatch tracks the
+  // slider as it moves rather than only on release.
   for (const id of ["darkenAmount", "markContrast"]) {
     $(id).addEventListener("change", paint);
   }

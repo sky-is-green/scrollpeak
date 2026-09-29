@@ -79,12 +79,12 @@
     /**
      * Push the resolved palette at the CSS.
      *
-     * Every colour the rail draws comes from here, so the strip, the thumb and
-     * the markers cannot end up in three unrelated schemes -- and the accent
-     * follows the Firefox theme when one is installed, rather than being a
-     * hardcoded blue that is wrong on every machine but the one it was picked
-     * on. Written to <html> because that is where content.css sets them, and
-     * where vugluscr reads them from.
+     * Every colour the rail draws comes from here, so the strip, the thumb
+     * and the rail's own chrome cannot end up in three unrelated schemes --
+     * and the accent follows the Firefox theme when one is installed, rather
+     * than being a hardcoded blue that is wrong on every machine but the one
+     * it was picked on. Written to <html> because that is where content.css
+     * sets them, and where vugluscr reads them from.
      */
     function applyAppearance() {
       map.setAppearance({ ...settings, theme: themePalette });
@@ -319,28 +319,6 @@
         themePalette = next || null;
         applyAppearance();
         repaint();
-      },
-
-      /**
-       * Kate's scrollbar marks: this.put them in lanes by depth, so h1/h2 --
-       * the ones worth finding -- take the outer lanes.
-       */
-      paintMarkers() {
-        if (!settings.showMarkers) {
-          rail.setMarkers([]);
-          return;
-        }
-        const top = content.getBoundingClientRect().top;
-        rail.setMarkers(
-          Array.from(content.querySelectorAll("h1, h2, h3")).map((el) => {
-            const rect = el.getBoundingClientRect();
-            return {
-              start: rect.top - top,
-              end: rect.bottom - top,
-              lane: Number(el.tagName[1]) <= 2 ? "left" : "center",
-            };
-          }),
-        );
       },
 
       teardown() {

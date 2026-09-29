@@ -30,7 +30,7 @@ get subtly wrong:
 |---|---|
 | `s_lineWidth` 100, `s_pixelMargin` 8, `s_linePixelIncLimit` 6 | same constants |
 | `charIncrement = pixmapLineCount / grooveHeight`, capped at 6, then escalating to `lineIncrement` | `buildPixmap()` |
-| `m_miniMapWidth(40)` | default strip width, 60px — `KateViewConfig` overrides the constructor, see Settings |
+| `m_miniMapWidth(40)` | default strip width, 70px — our default, not Kate's 60 |
 | `m_updateTimer.setInterval(300)` | `REBUILD_DELAY_MS` |
 | `m_delayTextPreviewTimer.setInterval(250)`, first show only | preview debounce |
 | `setScaleFactor(0.75)`, half width by fifth height, centred, clamped | `magnifier.js` |
@@ -86,9 +86,11 @@ watch page with its recommendation column), the raster has no way to show it,
 because by design it draws every line from the left margin. Blocks are then
 drawn instead: text areas filled white or black, whichever contrasts with the
 strip; links in the page's own link colour, pushed to contrast the same way the
-raster's marks are; and images as hollow 1px outlines. It is an addition to the
-port rather than a change to it: on a long single-column document, where Kate's
-raster reads as text, nothing about it changes.
+raster's marks are; images as hollow 1px outlines; and form controls as boxes
+in the browser's own field, face and border colours, so a settings page reads
+as the controls it is made of. It is an addition to the port rather than a
+change to it: on a long single-column document, where Kate's raster reads as
+text, nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
@@ -182,19 +184,15 @@ clone a moment out of date is a much smaller lie than a preview that cannot keep
 up with the cursor. The first build starts on pointer entry, inside Kate's 250ms
 first-appearance delay.
 
-`test/verify_preview_lines.py` checks the strong claim directly. It pairs the
-page's elements with the clone's and asserts that the *distance* between any two
-of them is the page's own geometry scaled by 0.75 — offsets, not positions,
-because the transform deliberately translates. The worst error on the fixture is
-0.01px for offsets and the same for sizes. Then, because the two documents now
-have different viewports, it opens a *reference* iframe of the same URL at the
-clone's exact width and asserts every element lands on its counterpart, also to
-0.01px; a fixture whose breakpoint sits between the two widths proves the clone
-takes the page's narrow layout while the page keeps its wide one. It also
-samples strings and asserts each appears exactly once in the preview, which is
-the check that would have caught the old model's duplication directly: a
-reconstructed run and a cloned graphic drawing the same text, a few pixels
-apart.
+`test/verify_preview_lines.py` checks the strong claim directly. It opens a
+*reference* iframe of the same URL at the clone's exact width and asserts every
+element lands on its counterpart — position and size — to 0.01px, alongside
+the element and duplicate-content checks against the page itself. A fixture
+whose breakpoint sits between the two widths proves the clone takes the page's
+narrow layout while the page keeps its wide one. It also samples strings and
+asserts each appears exactly once in the preview, which is the check that
+would have caught the old model's duplication directly: a reconstructed run
+and a cloned graphic drawing the same text, a few pixels apart.
 
 The preview's frame is a 1px hairline: every pixel here is a pixel of the page
 that is not shown, and the page supplies its own margins.
@@ -204,7 +202,7 @@ that is not shown, and the page supplies its own margins.
 The options page mounts a real ScrollPeak on itself, from the same files a page
 gets, so a change can be seen landing without leaving. That is deliberate: a
 preview built from anything else could disagree with what a page actually gets.
-Checked by moving the width control and watching the bar go 60px to 120px.
+Checked by moving the width control and watching the bar go 70px to 120px.
 
 The popup carries the settings you reach mid-browsing -- the site toggle, the
 magnifier, markers, width, minimap-only and peek -- and All settings, which is
@@ -322,18 +320,23 @@ later all update the open tabs without knowing the tabs exist.
 
 | Setting | Kate default | Here |
 |---|---|---|
-| Scrollbar minimap width | 60 | `minimapWidth` |
+| Scrollbar minimap width | 60 | `minimapWidth`, default 70 |
 | Scrollbar preview (the hover preview) | on | `showMagnifier` |
-| Scrollbar marks | off | `showMarkers` |
-| Show scrollbars: always / when needed / never | always | `scrollbarMode` |
+| Show scrollbars: always / when needed | always | `scrollbarMode`, default when-needed |
 
-Two of my earlier guesses were wrong and are corrected: the default width is
-**60**, not the 40 in `KateScrollBar`'s constructor — `kateview.cpp` applies the
-config value at init and overrides it — and marks default **off**, which I had
-on.
+Kate's own default width is 60 — not the 40 in `KateScrollBar`'s constructor,
+which `kateview.cpp` overrides at init — but ours is 70. Kate's "never" mode
+is gone: the enabled switch supersedes it, and a profile that still carries
+"never" is treated as disabled.
 
 Deliberately **not** ported:
 
+- **Scrollbar marks** (`ShowScrollBarMarks`). In Kate they are bookmarks and
+  breakpoints, and on a web page "what matters" cannot be guessed; there is no
+  equivalent worth showing.
+- **A colour for every mark.** The page's own text colours are what make a
+  heading look different from body copy, and they are better than anything a
+  single override would pick.
 - **"Show whole document in the mini-map"** (`ShowScrollBarMiniMapAll`).
   Kate's own settings dialog hides its checkbox with the comment *"temporary
   until the feature is done"*, so it is not a setting anyone can depend on.
@@ -346,15 +349,14 @@ These are web-specific, with no analogue in an editor:
 
 | Setting | Default | What it does |
 |---|---|---|
-| Preview width | 50% of the window | The hover preview's width. Kate draws his at half the window and offers no control, so the default is his and the setting is an addition. |
-| Preview height | 20% of the window | The hover preview's height. Same arrangement. |
+| Preview width | 30% of the window | The hover preview's width. Kate hardcodes his at half the window and offers no control. |
+| Preview height | 20% of the window | The hover preview's height. Kate hardcodes a fifth. |
 | Minimap only, no track | off | Drops the narrow drag track, so the rail is just the map and takes 14px less. The page's gutter shrinks with it. |
 | Hide until I scroll or approach | off | Parks the rail off the right edge. It returns on scroll, wheel, key press, or when the pointer comes within the trigger distance. |
 | Trigger distance | 48px | How close to the right edge counts as "near". |
 | Stay visible for | 1.6s | How long it stays after a trigger. |
 | Strip colour | follows the browser | The minimap's background. |
-| Mark colour | the page's own | One colour for every mark, instead of each line keeping its own. |
-| Darken the background by | 82% | How far to darken, for the default strip colour. |
+| Minimap background shade | 82% | How far to darken, for the default strip colour. |
 | Minimum mark contrast | 3:1 | WCAG ratio the marks must reach against the strip. |
 
 **On the strip colour and contrast.** Kate fills the minimap with the editor
@@ -402,10 +404,10 @@ preview can still measure it while it is off-screen.
 ### Testing the settings
 
 `test/test_settings.py` installs the extension with different defaults and
-checks what a real page ends up with — that `never` releases the padding the
-rail reserved, that `whenNeeded` hides on a page that fits, that the width
-actually changes the rail, and that every control on the options page maps to a
-real setting.
+checks what a real page ends up with — that `whenNeeded` hides on a page that
+fits, that the width actually changes the rail, that the preview size settings
+change the preview, and that every control on the options page maps to a real
+setting.
 
 ```sh
 python3 test/test_ui.py               # the popup and the options page
@@ -454,7 +456,7 @@ against the page rather than against themselves: the preview reproduces the
 page's element offsets and sizes to 0.01px and every sampled string in it
 appears exactly once; a scripted cursor sweep down the rail holds p99 17.1ms,
 with the single frame over 100ms on arrival rather than during the sweep; and
-the map leaks no graphics (red = 0, green = 0 in a 60px strip).
+the map leaks no graphics (red = 0, green = 0 in the strip).
 
 Known limits, in rough priority order:
 

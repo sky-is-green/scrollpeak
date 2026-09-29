@@ -171,6 +171,9 @@ def main():
                 return d
 
             d = run({}, "default: darker shade of the page, marks contrasted")
+            # The rail's full width with the track, for the minimap-only case
+            # below to shrink from.
+            default_rail = d["railWidth"]
             check("strip background is not the page background",
                   d["stripBg"] and d["stripBg"] != d["pageBg"],
                   f"strip={d['stripBg']} page={d['pageBg']}")
@@ -207,22 +210,15 @@ def main():
             check("the CSS variable follows it too",
                   d["cssStrip"] == "rgb(176,48,0)", d["cssStrip"])
 
-            d = run({"markColour": "#ff0000"}, "one colour for every mark")
-            check("every mark takes the chosen colour", d["distinctMarks"] == 1,
-                  f"{d['distinctMarks']} distinct resolved")
-            check("and it still contrasts with the strip",
-                  max(d["contrastVsBg"]["vsDarkest"],
-                      d["contrastVsBg"]["vsLightest"]) >= 3,
-                  f"best {max(d['contrastVsBg']['vsDarkest'], d['contrastVsBg']['vsLightest']):.1f}:1")
-
             d = run({"hideTrack": True}, "minimap only")
             check("track is not laid out", not d["trackVisible"],
                   f"visible={d['trackVisible']} classes={d['classes']}")
-            check("rail is narrower than with a track", d["railWidth"] <= 62,
-                  f"rail={d['railWidth']}px")
+            check("rail is narrower than with a track", d["railWidth"] < default_rail,
+                  f"rail={d['railWidth']}px vs {default_rail}px with the track")
             check("the page's gutter shrinks with it",
-                  d["padRight"] not in ("0px", "") and int(d["padRight"].rstrip("px")) <= 62,
-                  f"padding-right={d['padRight']}")
+                  d["padRight"] not in ("0px", "") and
+                  abs(int(d["padRight"].rstrip("px")) - d["railWidth"]) <= 1,
+                  f"padding-right={d['padRight']} rail={d['railWidth']}px")
 
             # Peek is off by default, so it has to be asked for explicitly.
             d = run({"hideWhenIdle": True},

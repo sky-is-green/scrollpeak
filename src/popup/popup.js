@@ -11,7 +11,7 @@
 
 const $ = (id) => document.getElementById(id);
 
-const MODES = ["always", "whenNeeded", "never"];
+const MODES = ["always", "whenNeeded"];
 
 async function init() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -38,7 +38,6 @@ async function init() {
   }
 
   bindCheckbox("showMagnifier", settings.showMagnifier);
-  bindCheckbox("showMarkers", settings.showMarkers);
 
   const width = $("minimapWidth");
   const widthOut = $("minimapWidth-out");

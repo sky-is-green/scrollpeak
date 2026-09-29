@@ -195,11 +195,13 @@ output {
 
 .links {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
 }
 
 .linkbtn {
+  flex: none;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: transparent;

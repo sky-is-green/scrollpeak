@@ -121,7 +121,6 @@ cb(JSON.stringify({
   modeCount: document.querySelectorAll('input[name="scrollbarMode"]').length,
   enabled: $("enabled") ? $("enabled").checked : null,
   showMagnifier: $("showMagnifier") ? $("showMagnifier").checked : null,
-  showMarkers: $("showMarkers") ? $("showMarkers").checked : null,
   minimapWidth: $("minimapWidth") ? $("minimapWidth").value : null,
   widthLabel: $("minimapWidth-out") ? $("minimapWidth-out").textContent : null,
   sites: [...document.querySelectorAll("#site-list li span")].map(s => s.textContent),
@@ -194,15 +193,14 @@ def main():
 
             print("popup")
             check("loads with no uncaught errors", not d["errors"], str(d["errors"]))
-            check("three scrollbar modes, as in Kate", d["modeCount"] == 3,
+            check("two scrollbar modes", d["modeCount"] == 2,
                   f"n={d['modeCount']}")
-            check("defaults are Kate's", d["mode"] == "always"
+            check("defaults are the shipped ones", d["mode"] == "whenNeeded"
                   and d["minimapWidth"] == str(defaults["minimapWidth"])
                   and d["widthLabel"] == f'{defaults["minimapWidth"]}px',
                   f"mode={d['mode']} width={d['minimapWidth']} ({d['widthLabel']})")
-            check("preview on, marks off, as in Kate",
-                  d["showMagnifier"] is True and d["showMarkers"] is False,
-                  f"preview={d['showMagnifier']} marks={d['showMarkers']}")
+            check("preview on by default", d["showMagnifier"] is True,
+                  f"preview={d['showMagnifier']}")
             # MDN, "Popups": set the popup width on <body>; Firefox computes the
             # popup's preferred width from the body and ignores :root.
             check("popup width set on body, not root",
@@ -211,20 +209,17 @@ def main():
 
             print("\npopup controls write through")
             m.cmd("WebDriver:ExecuteAsyncScript",
-                  {"script": ACT, "args": ["radio", "never"], "scriptTimeout": 20000})
-            m.cmd("WebDriver:ExecuteAsyncScript",
-                  {"script": ACT, "args": ["check", "showMarkers"], "scriptTimeout": 20000})
+                  {"script": ACT, "args": ["radio", "always"], "scriptTimeout": 20000})
             m.cmd("WebDriver:ExecuteAsyncScript",
                   {"script": ACT, "args": ["range", 120], "scriptTimeout": 20000})
             r = m.cmd("WebDriver:ExecuteAsyncScript",
                       {"script": READ, "args": [], "scriptTimeout": 20000})
             d = json.loads(r.get("value", r))
             written = {k: v for patch in d["writes"] for k, v in patch.items()}
-            check("mode, marks and width all written",
-                  written.get("scrollbarMode") == "never"
-                  and written.get("showMarkers") is True
+            check("mode and width both written",
+                  written.get("scrollbarMode") == "always"
                   and written.get("minimapWidth") == 120,
-                  f"writes={d['writes'][-3:]}")
+                  f"writes={d['writes'][-2:]}")
             check("no errors after interaction", not d["errors"], str(d["errors"]))
 
             print("\npopup actions")
@@ -270,7 +265,7 @@ def main():
             live = r.get("value", r)
             check("a real rail is mounted here", live["mounted"], str(live))
             check("and it has a minimap, not just a track", live["hasMap"])
-            check("it is using the default width", live["width"] == 60,
+            check("it is using the default width", live["width"] == 70,
                   f"{live['width']}px")
 
             m.cmd("WebDriver:ExecuteAsyncScript", {"script": r"""

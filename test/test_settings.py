@@ -131,15 +131,15 @@ def main():
                         {"script": MAGNIFY, "args": [], "scriptTimeout": 20000})
               return r.get("value", r)
 
-          print("Kate's defaults")
+          print("shipped defaults")
           install({})
           p = page(article)
           # The fixture has its own 1rem padding, so "layout untouched" cannot
           # mean 0px. It means the rail's reservation is gone. Remember what
           # the rail reserves so the no-rail cases can be compared to it.
           rail_pad = p["padRight"]
-          check("always: rail on a scrolling page", p["rail"], f"w={p['railWidth']}")
-          check("default map width is Kate's 60", p["mapWidth"] == 60,
+          check("whenNeeded: rail on a scrolling page", p["rail"], f"w={p['railWidth']}")
+          check("default map width is 70", p["mapWidth"] == 70,
                 f"map={p['mapWidth']}px rail={p['railWidth']}px")
           check("defaults reserve room for the rail", rail_pad not in ("0px", ""),
                 f"body padding-right={rail_pad}")
@@ -153,8 +153,11 @@ def main():
                     f"padding-right={got['padRight']} vs {rail_pad} with the rail")
               return got
 
-          print("\nscrollbarMode = never")
-          no_rail({"scrollbarMode": "never"}, "never")
+          # "never" is no longer offered -- the enabled switch is the off
+          # switch -- but a profile from before the change can still carry it,
+          # and the user's old choice is honoured.
+          print("\nlegacy scrollbarMode = never")
+          no_rail({"scrollbarMode": "never"}, "never (legacy)")
 
           print("\nscrollbarMode = whenNeeded")
           install({"scrollbarMode": "whenNeeded"})
@@ -225,8 +228,8 @@ def main():
           check("every setting the options page reads has a control",
                 not missing_ids, f"missing={missing_ids}" if missing_ids else "")
           modes = re.findall(r'name="scrollbarMode" value="(\w+)"', html)
-          check("three modes, matching Kate's ScrollbarMode",
-                modes == ["always", "whenNeeded", "never"], ",".join(modes))
+          check("two modes; 'never' is superseded by the enabled switch",
+                modes == ["always", "whenNeeded"], ",".join(modes))
       finally:
           stop_firefox(proc)
 

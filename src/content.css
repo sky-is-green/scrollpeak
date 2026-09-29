@@ -46,10 +46,6 @@ html.vugluscr_embedded {
      -- guaranteed to contrast with it -- rather than from the accent, which on
      a themed or dark browser can be the same value as the strip. */
   --vugluscr_minimap_thumb_background: color-mix(in srgb, var(--sp-ink, #ffffff) 34%, transparent);
-  /* Kate's ShowScrollBarMarks. These sit on the strip too, so they come from
-     the same ink colour as the viewport band rather than from the accent, which
-     can be the strip's own colour on a themed or dark browser. */
-  --vugluscr_marker_color: var(--sp-ink, #1a1a1a);
   --vugluscr_minimap_block: color-mix(in srgb, var(--sp-accent) 23%, transparent);
   --vugluscr_minimap_block_group: color-mix(in srgb, var(--sp-accent) 17%, transparent);
   --vugluscr_minimap_block_unknown: color-mix(in srgb, var(--sp-accent) 25%, transparent);

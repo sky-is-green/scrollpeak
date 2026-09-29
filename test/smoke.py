@@ -105,16 +105,16 @@ setTimeout(() => {
     out.placed_left_of_strip = rect.right <= r.left + 2;
     out.fully_on_screen = rect.left >= 0 && rect.top >= 0 &&
       rect.right <= window.innerWidth && rect.bottom <= window.innerHeight;
-    // Kate sizes the preview at half the view's width by a fifth of its
-    // height. getBoundingClientRect includes the 1px border on each side, so
-    // compare the content box.
+    // The preview defaults to 30% of the window wide by 20% tall.
+    // getBoundingClientRect includes the 1px border on each side, so compare
+    // the content box.
     const cs = getComputedStyle(pop);
     const bw = parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
     const bh = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
     out.contentWidth = Math.round(rect.width - bw);
     out.contentHeight = Math.round(rect.height - bh);
-    out.expectedWidth = Math.round(window.innerWidth / 2);
-    out.expectedHeight = Math.round(window.innerHeight / 5);
+    out.expectedWidth = Math.round(window.innerWidth * 0.30);
+    out.expectedHeight = Math.round(window.innerHeight * 0.20);
     out.size = out.contentWidth + "x" + out.contentHeight;
     // The preview is the page's own content, translated and scaled. Checked by
     // what is in it, which also proves it is not empty: the clone is one
