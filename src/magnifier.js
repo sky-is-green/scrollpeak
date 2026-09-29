@@ -71,10 +71,10 @@
   // cannot keep up with the cursor.
   const SETTLE_MS = 180;
 
-  // A small gap inside the frame, so the content does not touch the border.
-  // Deliberately small: every pixel here is a pixel of the page pushed out of
-  // view, and the frame is already only half the window wide.
-  const BUFFER = 6;
+  // A hairline between the frame and the page's own edge. Small on purpose:
+  // this is a window onto the page, and each pixel here is a pixel of the page
+  // that is not shown. The page supplies its own margins.
+  const BUFFER = 2;
 
   function mount(ctx, settings) {
     if (!settings.showMagnifier) return null;

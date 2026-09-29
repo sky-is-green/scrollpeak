@@ -94,12 +94,16 @@ html.vugluscr_embedded {
   overflow: hidden;
   border: 1px solid var(--sp-border);
   border-radius: 3px;
-  /* A small buffer, so the first run of text is not hard against the frame and
-     does not read as clipped. Deliberately small: the preview's coordinates are
-     the page's own, so every pixel of padding is a pixel of the page that is
-     pushed out of view. */
+  /* A hairline inside the frame, and no more.
+   *
+   * This used to be 3x6 with a further 6px buffer in the renderer, because the
+   * preview was assembled from measured text runs and the first one would
+   * otherwise start hard against the border and read as clipped. The preview is
+   * a clone of the page now: the page's own margins are the breathing room, and
+   * every pixel of frame here is a pixel of the page pushed out of a window
+   * that is only half the screen wide to begin with. */
   box-sizing: border-box;
-  padding: 3px 6px;
+  padding: 2px;
   background: var(--sp-bg);
   box-shadow: 0 2px 12px var(--sp-shadow);
 
