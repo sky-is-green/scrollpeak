@@ -18,14 +18,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import SRC, launch_firefox, stop_firefox  # noqa: E402
 
 SITES = [
-    # (label, url, expectation). "native" means the page is media-heavy and
-    # should be left to the browser's own scrollbar; "rail" means the map.
+    # (label, url, expectation). "native" would mean the page is left to the
+    # browser's own scrollbar; nothing is any more -- media-heavy pages now
+    # get the block renderer, so "rail" is what every page here expects.
     ("GitHub (SPA)", "https://github.com/mozilla/firefox", "rail"),
     ("Wikipedia", "https://en.wikipedia.org/wiki/Firefox", "rail"),
-    ("YouTube watch (media)", "https://www.youtube.com/watch?v=jNQXAC9IVRw", "native"),
+    ("YouTube watch (media)", "https://www.youtube.com/watch?v=jNQXAC9IVRw", "rail"),
     ("w3.org spec (20k nodes)", "https://www.w3.org/TR/CSS-color-4/", "rail"),
     ("MDN reference", "https://developer.mozilla.org/en-US/docs/Web/CSS/color-mix", "rail"),
     ("Hacker News (short)", "https://news.ycombinator.com/", "rail"),
+    ("Reddit front (media)", "https://www.reddit.com/", "rail"),
 ]
 
 SETTLE = int(os.environ.get("SETTLE", "9"))

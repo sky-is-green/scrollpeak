@@ -77,38 +77,50 @@ characters are sliced onto it. Whitespace that is genuinely significant
 (`<pre>`, `white-space: pre*`) is detected per element from its own computed
 value rather than guessed.
 
-**A page that is not one column of text stops being a raster.** Two things
+**A page that is not one column of text stops being a raster.** Three things
 switch the map to semantic blocks. One is zoom: below one text line per 4px of
 groove — short articles, site stubs, the settings page — each line is stretched
-into a band of blobs and the characters stop being characters. The other is
+into a band of blobs and the characters stop being characters. The second is
 shape: when the text is spread over more than 0.75 of the viewport's width (a
 watch page with its recommendation column), the raster has no way to show it,
-because by design it draws every line from the left margin. Blocks are then
-drawn instead: text areas filled white or black, whichever contrasts with the
-strip; links in the page's own link colour, pushed to contrast the same way the
-raster's marks are; images as hollow 1px outlines; and form controls as boxes
-in the browser's own field, face and border colours, so a settings page reads
-as the controls it is made of. It is an addition to the port rather than a
-change to it: on a long single-column document, where Kate's raster reads as
-text, nothing about it changes.
+because by design it draws every line from the left margin. The third is
+content: a page whose content is pictures — a player, a card grid, a shop's
+search results — is block-shaped however its text falls.
+
+Blocks are drawn from every element on the page, not from a vocabulary: text
+areas filled white or black, whichever contrasts with the strip; links in the
+page's own link colour, pushed to contrast the same way the raster's marks are;
+images and video as hollow 1px outlines; form controls as boxes in the
+browser's own field, face and border colours, so a settings page reads as the
+controls it is made of; and every other element that paints a background, a
+border or a background image as an outline in its own colour. That last part is
+what reads on app-shaped pages: a shop card, a recommendation thumbnail and a
+player are divs, images and `<video>`, and a selector that only knew document
+tags left them invisible, so the map was a handful of stray labels. A box that
+paints the page background itself is left out — it is the page, and drawing it
+would flood the strip and mislead everything drawn over it. It is an addition
+to the port rather than a change to it: on a long single-column document, where
+Kate's raster reads as text, nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
-**A page that is mostly pictures keeps the browser's own scrollbar.** The
-block vocabulary is still text: on YouTube's watch page the player is a
-`<video>` the block selector never had, the recommendation cards are `div`s it
-never matches, and the titles and badges it does match are the noise, not the
-structure. A third renderer was written for those pages and did not read well
-enough to be worth a second product, so ScrollPeak leaves them alone instead:
-it does not mount, and the native scrollbar stays. Which pages count is
-measured, not taste: a video at least 300×150 (Wikipedia's 250×141 infobox
-thumbnail must not qualify), or at least twelve pictures of 200×100 covering
-more than a third of the document (YouTube watch has a 797×598 player; BBC's
-front 43 pictures at 33%, Reddit's 38 at 56%; against Wikipedia 9 at 1.4%,
-GitHub 1 at 2%). The decision is re-checked while the rail is up, so a page
-that grows a player later — YouTube is an SPA — still loses it.
-`test/verify_media.py` checks the fallback, the late arrival, and the
-near-misses that must keep their maps.
+**A page that is mostly pictures gets that block map, not the browser's
+scrollbar.** An earlier version gave those pages up: the rail did not mount and
+the native scrollbar stayed. Measured on live pages — eBay's search, Amazon's
+list, Reddit's front, YouTube's watch page — the generalized blocks read as the
+page, so the rail keeps them, and `isMediaPage()` now only chooses the
+renderer. Which pages count is measured, not taste: a video at least 300×150
+(Wikipedia's 250×141 infobox thumbnail must not qualify), at least twelve
+pictures of 200×100 covering more than a third of the document (Reddit's front
+38 at 56%, BBC's front 43 at 33%; against Wikipedia 9 at 1.4%, GitHub 1 at 2%),
+or five pictures of 120×80 in the first two viewports (measured: eBay 19,
+YouTube 7, Amazon's list 5; Wikipedia 2, GitHub 0). `test/verify_media.py`
+checks each fixture that must read as media, that the rail stays mounted, and
+that a fixed overlay — a lightbox, Wikipedia's media viewer — changes neither:
+only the page's own flow counts. The map chooses its renderer on every rebuild,
+so a player that arrives later (YouTube is an SPA) switches the map to blocks
+rather than taking the rail away, and opening a lightbox on a text page cannot
+flip it.
 
 **The preview is not a zoom of the map.** Kate's `KateTextPreview` renders the
 *real text* of the hovered region at 0.75 scale — smaller than the editor's own
@@ -418,7 +430,7 @@ python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
 python3 test/verify_graphics.py       # images, SVG, canvas and backgrounds
 python3 test/verify_preview_lines.py  # the preview reproduces the page's lines
 python3 test/verify_blocks.py         # text raster when long, blocks when zoomed
-python3 test/verify_media.py          # media pages keep the native scrollbar
+python3 test/verify_media.py          # media pages get the block map, rail stays
 python3 test/test_appearance.py       # colour, contrast, minimap-only, peek
 python3 test/test_settings.py         # every setting changes something
 python3 test/probe_sites.py           # live sites; edit SITES at the top
@@ -447,9 +459,9 @@ and that clicking scrolls. Exits non-zero on failure.
 **Functionally complete; in release clean-up.** The map, the preview,
 click-to-jump, drag, peek, minimap-only, the settings pages and the
 theme-derived colours all work, and all eleven test suites pass. `probe_sites.py`
-additionally drives GitHub, Wikipedia, a YouTube watch page, MDN, Hacker News
-and a 20,254-node W3C spec and reports map scale, painted pixels, renderer,
-console errors and page-layout damage.
+additionally drives GitHub, Wikipedia, a YouTube watch page, Reddit's front,
+MDN, Hacker News and a 20,254-node W3C spec and reports map scale, painted
+pixels, renderer, console errors and page-layout damage.
 
 The numbers that look like boasts in this README are measurements, checked
 against the page rather than against themselves: the preview reproduces the
@@ -463,12 +475,13 @@ Known limits, in rough priority order:
 - **The map is a text raster until a page is not one column of text.** On a
   long single-column document it is built from the page's own line boxes, so
   images, borders and empty containers carry no marks; that is Kate's model.
-  When the text is stretched too far, or spread across columns, it switches to
-  the semantic blocks described above, where images are outlines and links are
-  their own colour. A page that is mostly pictures — a player, a card grid —
-  is left to the browser's own scrollbar instead of being mapped at all. A
-  page with heavy grid or flex layout still maps its text where the browser
-  put it, and the preview is unaffected — the preview is the page.
+  When the text is stretched too far, spread across columns, or the page's
+  content is pictures, it switches to the semantic blocks described above,
+  where every painted element is drawn, images are outlines and links are
+  their own colour. A box that paints the page background itself is skipped,
+  and a fixed overlay is not the page. A page with heavy grid or flex layout
+  still maps its text where the browser put it, and the preview is unaffected
+  — the preview is the page.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
   on the first hover of a page load; it is the one rough edge left in frame

@@ -2,24 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>ScrollPeak late-media fixture</title>
+<title>ScrollPeak lightbox fixture</title>
 <style>
   body { font: 16px/1.5 Georgia, serif; margin: 0 auto; max-width: 44rem;
          padding: 2rem 1rem 6rem; color: #1c1c1e; background: #fdfdfc; }
   h1 { color: #10233f; }
   h2 { color: #1d4e89; margin-top: 2rem; }
-  video { display: block; width: 480px; height: 270px; background: #222; }
-  .spacer { height: 45vh; }
+  /* The MediaViewer shape: a fixed overlay holding one large video and a
+     wall of large pictures, over a page that is otherwise an article. Fixed
+     subtrees are not the page's content; opening this must not change the
+     renderer or take the rail away. */
+  .lightbox { position: fixed; inset: 0; z-index: 100; background: #141414;
+              display: flex; flex-wrap: wrap; align-content: center;
+              justify-content: center; gap: 12px; }
+  .lightbox video { width: 640px; height: 360px; background: #000; }
+  .lightbox img { width: 300px; height: 200px; }
 </style>
 </head>
 <body>
-<h1>A page that becomes a media page</h1>
-<p>This starts life as a plain article -- long enough for the text raster --
-so the rail mounts in text mode. The test then calls the hook below, which
-drops a player into the page the way an SPA renders one after the content
-script has already run. The rail must stay, and the map must switch to the
-block renderer.</p>
-<div class="spacer"></div>
+<h1>An article with a lightbox</h1>
+<p>A long, single-column article. Opening the lightbox must leave the text
+raster in place: a fixed overlay is not the page.</p>
 <p>Paragraph 1. A plain article, long enough that the map draws Kate's text raster rather than blocks.</p>
 <p>Paragraph 2. A plain article, long enough that the map draws Kate's text raster rather than blocks.</p>
 <p>Paragraph 3. A plain article, long enough that the map draws Kate's text raster rather than blocks.</p>
@@ -161,14 +164,39 @@ block renderer.</p>
 <p>Paragraph 139. A plain article, long enough that the map draws Kate's text raster rather than blocks.</p>
 <p>Paragraph 140. A plain article, long enough that the map draws Kate's text raster rather than blocks.</p>
 <script>
-  // Called by test/verify_media.py, not on load: the point is that the rail
-  // is already mounted in text mode when the player arrives.
-  window.__addPlayer = function () {
-    const hidden = document.querySelector("video[data-id='hidden-player']");
-    if (hidden) hidden.remove();
+  // Called by test/verify_media.py, not on load.
+  window.__openLightbox = function () {
+    const box = document.createElement("div");
+    box.className = "lightbox";
     const player = document.createElement("video");
-    player.setAttribute("data-id", "late-player");
-    document.body.insertBefore(player, document.body.firstChild);
+    player.setAttribute("data-id", "lightbox-player");
+    box.appendChild(player);
+    const wall = document.createElement("div");
+    wall.className = "wall";
+    wall.innerHTML = `
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2314eb80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2315ea80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2316e980'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2317e880'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2318e780'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2319e680'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%231ae580'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%231be480'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%231ce380'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%231de280'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%231ee180'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%231fe080'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2320df80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2321de80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2322dd80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2323dc80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2324db80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2325da80'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2326d980'/%3E%3C/svg%3E" />
+  <img alt="" width="300" height="200" src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'%3E%3Crect width='300' height='200' fill='%2327d880'/%3E%3C/svg%3E" />
+    `;
+    box.appendChild(wall);
+    document.body.appendChild(box);
   };
 </script>
 </body>
