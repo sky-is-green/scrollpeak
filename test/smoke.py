@@ -116,12 +116,14 @@ setTimeout(() => {
     out.expectedWidth = Math.round(window.innerWidth / 2);
     out.expectedHeight = Math.round(window.innerHeight / 5);
     out.size = out.contentWidth + "x" + out.contentHeight;
-    // The preview is DOM, not a canvas: cloned page elements positioned in a
-    // stage. Checked by what is in it, which also proves it is not empty.
+    // The preview is the page's own content, translated and scaled. Checked by
+    // what is in it, which also proves it is not empty: the clone is one
+    // subtree, so counting its nodes is counting what it is showing.
     const stage = pop.querySelector(".scrollpeak-magnifier__stage");
     out.hasStage = !!stage;
-    out.text_lines = stage ? stage.querySelectorAll(".scrollpeak-magnifier__line").length : 0;
-    out.items = pop.dataset.items ? Number(pop.dataset.items) : 0;
+    out.clone = stage ? stage.querySelectorAll(".scrollpeak-magnifier__page").length : 0;
+    out.stageNodes = stage ? stage.querySelectorAll("*").length : 0;
+    out.hasPageText = stage ? stage.textContent.trim().length > 40 : false;
   }
   done(out);
 }, 800);
@@ -169,8 +171,9 @@ def main():
             ok = (k in ("exists", "open", "placed_left_of_strip",
                         "fully_on_screen") and v) or \
                  (k == "hasStage" and v) or \
-                 (k == "text_lines" and v > 0) or \
-                 (k == "items" and v > 0) or \
+                 (k == "clone" and v == 1) or \
+                 (k == "stageNodes" and v > 20) or \
+                 (k == "hasPageText" and v) or \
                  (k == "contentWidth" and abs(v - hover["expectedWidth"]) <= 2) or \
                  (k == "contentHeight" and abs(v - hover["expectedHeight"]) <= 2) or \
                  k == "expectedWidth" or k == "expectedHeight" or k == "size"

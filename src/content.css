@@ -127,6 +127,24 @@ html.vugluscr_embedded {
   overflow: hidden;
 }
 
+/* The cloned page.
+ *
+ * It is the page's own markup and stylesheet, so the browser lays it out
+ * exactly as it lays out the page; the transform only moves and scales the
+ * result. transform-origin at 0 0 so the translate is in the clone's own
+ * coordinates, and `transform` rather than left/top because changing a
+ * transform does not reflow -- which is what makes following the pointer
+ * cheap. */
+.scrollpeak-magnifier__page {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  /* The page's own background is on the cloned body, but a page that paints
+   * none should still not show the strip's colour through the preview. */
+  background: #fff;
+}
+
 .scrollpeak-magnifier__line {
   /* A run is exactly one line box, so it must never soft-wrap. */
   white-space: pre;

@@ -55,9 +55,6 @@
   // Kate: simpleMode -- m_doc->lines() > 7500 skips highlighting work
   const SIMPLE_MODE_LINE_COUNT = 7500;
 
-  // Cap on collected graphics. See collectBoxes().
-  const MAX_BOXES = 600;
-
   const SKIP_TAGS = new Set([
     "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE",
     "CANVAS", "IFRAME", "OBJECT", "EMBED", "SVG",
@@ -217,17 +214,14 @@
       kept.sort((a, b) => a.y - b.y);
       this.lines = kept;
 
-      // Painted graphics: images, inline SVG, canvas, background images.
-      //
-      // Kate's preview calls paintTextLine, which draws text lines, because in
-      // a text editor text is the whole of the content. A web page is not
-      // text, and an icon is often the only thing that tells you what a
-      // section is -- a file type, a status, a warning. So the preview shows
-      // them too. The minimap stays text-only, which is faithful.
-      this.boxes = this.collectBoxes(root).filter(
-        (b) => b.y > -b.height && b.y < maxY + b.height,
-      );
-      this.boxes.sort((a, b) => a.y - b.y);
+      // None, any more. The preview used to be assembled from collected
+      // graphics and text runs, and these were the graphics. It is now a clone
+      // of the page, laid out by the browser, so the collection is dead weight
+      // -- and it was not cheap: a querySelectorAll("*") plus a
+      // getComputedStyle for every element on every rebuild, to produce
+      // something nothing read. The map itself stays text-only, which is
+      // faithful to Kate.
+      this.boxes = [];
 
       // Kate's preview starts at xStart = 0, so what it shows is the line's
       // own indentation, not its position on the page. A page's analogue is
@@ -244,94 +238,6 @@
       this.revision++;
       return lines;
     }
-
-    /**
-     * Collect the things on the page that paint something other than glyphs.
-     *
-     * Bounded on purpose: `querySelectorAll` on a big page returns thousands
-     * of nodes, and a rect read for each would cost more than the text pass.
-     * A page with more than MAX_BOXES of them gets the first MAX_BOXES in
-     * document order, which is where the header and the first screenful are.
-     */
-    collectBoxes(root) {
-      const scrollY = window.scrollY;
-      const scrollX = window.scrollX;
-      const found = [];
-      const seen = new Set();
-
-      const consider = (el) => {
-        if (!el || seen.has(el)) return;
-        if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) return;
-        // Same rule as the text pass: a fixed or sticky element has no
-        // document position, so a box for it would be placed at a guess.
-        if (this.#isStuck(el)) return;
-        seen.add(el);
-
-        // The background as *computed*, carried onto the clone.
-        //
-        // A clone keeps the element's classes, which is enough for a rule that
-        // matches the element itself -- but not for one that matches its place
-        // in the document. Wikipedia colours its version rows with a rule on the
-        // row, so a <td> cloned out of its table has no colour at all: the
-        // preview showed five identical white rows where the page has green,
-        // amber and red ones. Reading the computed value sidesteps the question
-        // of which selector produced it.
-        const cs = getComputedStyle(el);
-        const paint = {
-          bg: isPainted(cs.backgroundColor) ? cs.backgroundColor : null,
-          image: cs.backgroundImage !== "none" ? cs.backgroundImage : null,
-          size: cs.backgroundSize,
-          position: cs.backgroundPosition,
-          repeat: cs.backgroundRepeat,
-        };
-
-        const rects = Array.from(el.getClientRects()).filter(
-          (r) => r.width > 0.5 && r.height > 0.5,
-        );
-        for (const rect of rects) {
-          if (rect.width < 1 || rect.height < 1) continue;
-          found.push(makeBox(el, rect, scrollX, scrollY, paint));
-        }
-      };
-
-      // Media elements and inline SVG draw directly onto a canvas.
-      for (const el of root.querySelectorAll(
-        "img, svg, canvas, video, picture img, object, embed",
-      )) {
-        if (found.length >= MAX_BOXES) break;
-        consider(el);
-      }
-
-      // Backgrounds: images and colours.
-      //
-      // Kate has neither. His preview draws text on the editor background, and
-      // for a text editor that is the whole of it. On a web page a background
-      // carries meaning a text-only preview throws away -- on Wikipedia's
-      // version history table the row colour is what says which release is
-      // current, and the preview showed five identical rows of black text.
-      //
-      // The page's own background is excluded: html/body would otherwise cover
-      // the whole region, and the preview already paints the page's background
-      // behind everything. Anything as large as the viewport in both axes is
-      // the same thing in a wrapper, so it goes too; a page-level wrapper's
-      // colour is the page background under another name.
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      for (const el of root.querySelectorAll("*")) {
-        if (found.length >= MAX_BOXES) break;
-        if (el === document.body || el === document.documentElement) continue;
-        if (seen.has(el)) continue;
-        const cs = getComputedStyle(el);
-        const hasImage = cs.backgroundImage && cs.backgroundImage !== "none";
-        if (!hasImage && !isPainted(cs.backgroundColor)) continue;
-        const r = el.getBoundingClientRect();
-        if (r.width >= vw && r.height >= vh) continue;
-        consider(el);
-      }
-
-      return found;
-    }
-
 
     /**
      * Settings that affect how the strip is coloured.
@@ -896,44 +802,8 @@
    * white-space: pre* values keep their source text, so there the raw slice
    * already is the rendered text.
    */
-  function makeBox(el, rect, scrollX, scrollY, paint) {
-    return {
-      el,
-      x: rect.left + scrollX,
-      y: rect.top + scrollY,
-      width: rect.width,
-      height: rect.height,
-      kind: el.tagName,
-      paint,
-    };
-  }
-
   function clamp(v, min, max) {
     return Math.min(max, Math.max(min, v));
-  }
-
-  /**
-   * Does this computed background colour actually paint anything?
-   *
-   * A fully transparent background is what an unstyled element reports, and
-   * cloning one would cost a node to draw nothing. A *semi*-transparent one
-   * does paint, and is kept: a table row at 20% green is a table row that
-   * means something.
-   */
-  function isPainted(color) {
-    const text = (color || "").trim();
-    if (!text || text === "transparent") return false;
-    if (!parseRgb(text)) return false;
-    const alpha = /^rgba?\([^)]*?,\s*([\d.]+)\s*\)$/.exec(text);
-    if (alpha) return Number(alpha[1]) > 0;
-    const slash = /\/\s*([\d.]+%?)\s*\)$/.exec(text);
-    if (slash) {
-      const v = slash[1].endsWith("%")
-        ? parseFloat(slash[1]) / 100
-        : parseFloat(slash[1]);
-      return v > 0;
-    }
-    return true;
   }
 
   /** 5th-percentile x, so a single far-left outlier cannot shift the column. */

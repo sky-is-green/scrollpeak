@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 """
-Check that the hover preview reproduces the page's line boxes exactly.
+Check that the preview is the page, translated and scaled.
 
-Three separate things went wrong here, all of them invisible in a screenshot
-unless you already know what the preview is supposed to look like, so each is
-asserted against the page's own geometry:
+The preview is a clone of the page's content moved into the magnifier with a
+CSS transform. The claim that makes that worth doing is a strong one and is
+what this tests: every element sits exactly where the page puts it, relative to
+every other element, scaled by 0.75 -- because it is the page's own layout,
+laid out by the same engine, not a reconstruction of it.
 
-  1. A run must be one line box. A text node's raw source slice keeps the
-     newlines from the HTML source, and the preview draws with
-     white-space: pre, so a surviving newline became a real line break and the
-     run spilled onto a second line, on top of the run below it.
-  2. Every axis must be scaled by the same 0.75. Scaling only the font size
-     left the line pitch at 1/0.75 of the page's, which reads as broken
-     spacing.
-  3. A run must carry no width or height of its own, so a slice that did wrap
-     is visible rather than silently clipped.
+That is a much better claim than the old test could make. The preview used to
+be assembled from measured text runs and cloned graphics, and the test could
+only check that the measurements were self-consistent. This checks them against
+the page.
 
-The reference is the page itself, measured with the same Range technique the
-map uses, rather than a number written down here.
+Offsets rather than absolute positions, because the transform deliberately
+translates the content to put the hovered region in view; what must not change
+is the relationships.
 
-    python3 test/verify_preview_lines.py
+    python3 test/verify_preview_lines.py [extension-dir]
 """
 import os
 import sys
@@ -28,11 +26,16 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import SRC, fixture_server, launch_firefox, stop_firefox  # noqa: E402
 
-# Kate: m_textPreview->setScaleFactor(0.75)
 SCALE = 0.75
+
+# Elements the fixture has plenty of, in the order both trees yield them, so
+# the page's and the clone's can be paired by index without ids.
+SELECTOR = "h1, h2, h3, p, li, a, code, blockquote"
 
 PROBE = r"""
 const done = arguments[arguments.length - 1];
+const SCALE_ARG = arguments[0];
+const SEL = arguments[1];
 const strip = document.querySelector(".vugluscr .minimap");
 const sr = strip.getBoundingClientRect();
 function move() {
@@ -41,57 +44,48 @@ function move() {
     bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
 }
 move();
-setTimeout(() => { move(); setTimeout(report, 400); }, 500);
+setTimeout(() => { move(); setTimeout(report, 500); }, 600);
 
 function report() {
-  const stage = document.querySelector(".scrollpeak-magnifier__stage");
-  const runs = [...stage.children].map((el) => {
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    const s = stage.getBoundingClientRect();
-    const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize);
-    return {
-      tag: el.tagName,
-      text: el.textContent,
-      hasNewline: /[\n\r\t]/.test(el.textContent),
-      hasDoubleSpace: /  /.test(el.textContent),
-      // Leading whitespace is correct and expected: it is the real space
-      // between two inline elements, and dropping it pulls a run back over the
-      // one before it. Trailing is always noise.
-      trailing: (el.textContent !== el.textContent.replace(/ +$/, "")),
-      lineBoxes: r.height / lh,
-      left: r.left - s.left,
-      top: r.top - s.top,
-      w: r.width, h: r.height,
-      fs: parseFloat(cs.fontSize),
-      inlineWidth: el.style.width, inlineHeight: el.style.height,
-    };
-  });
-
-  // The page's own line pitch for the same paragraph, measured the way the map
-  // measures it: one rect per line box.
-  const p = [...document.querySelectorAll("p")].find((e) => /Colour is doing/.test(e.textContent));
-  const range = document.createRange();
-  range.selectNodeContents(p.firstChild);
-  const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
-  const pagePitch = rects.length > 1 ? rects[1].top - rects[0].top : null;
-  const pageFont = parseFloat(getComputedStyle(p).fontSize);
-
-  // The preview's pitch: the most common gap between runs. Taking the mode
-  // rather than the mean keeps one heading's much larger gap from dragging the
-  // average off the paragraph's own rhythm.
-  const ys = runs.map((r) => r.top).sort((a, b) => a - b);
-  const gaps = [];
-  for (let i = 1; i < ys.length; i++) if (ys[i] - ys[i - 1] > 4) gaps.push(ys[i] - ys[i - 1]);
-  const tally = new Map();
-  for (const g of gaps) {
-    const k = g.toFixed(1);
-    tally.set(k, (tally.get(k) || 0) + 1);
+  const pop = document.querySelector(".scrollpeak-magnifier");
+  const stage = pop.querySelector(".scrollpeak-magnifier__stage");
+  // The clone lives in this document too, so the page's own query would
+  // return both copies and every pairing would be off by the clone's size.
+  const page = [...document.querySelectorAll(SEL)]
+    .filter((el) => !el.closest('.scrollpeak-magnifier'));
+  const clone = [...stage.querySelectorAll(SEL)];
+  const n = Math.min(page.length, clone.length);
+  const pairs = [];
+  // Offsets, not positions: the transform translates to put the hovered region
+  // in view, so absolute positions are expected to differ. What must hold is
+  // that the *distance* between two elements is the page's, scaled by 0.75 --
+  // and the page's rects are unscaled while the clone's are already scaled, so
+  // the scale goes on one side of the comparison, not both.
+  const ra = page[0].getBoundingClientRect();
+  const rb = clone[0].getBoundingClientRect();
+  for (let i = 0; i < n; i++) {
+    const a = page[i].getBoundingClientRect();
+    const b = clone[i].getBoundingClientRect();
+    if (a.width < 1 || b.width < 1) continue;
+    pairs.push({
+      tag: page[i].tagName,
+      text: (page[i].textContent || "").trim().slice(0, 22),
+      dx: (b.left - rb.left) - (a.left - ra.left) * SCALE_ARG,
+      dy: (b.top - rb.top) - (a.top - ra.top) * SCALE_ARG,
+      pw: a.width, cw: b.width, ph: a.height, ch: b.height,
+    });
   }
-  let previewPitch = null, best = -1;
-  for (const [k, n] of tally) if (n > best) { best = n; previewPitch = Number(k); }
-
-  done({ runs, pagePitch, pageFont, previewPitch, pitchGaps: gaps });
+  done({
+    open: pop.classList.contains("is-open"),
+    pageCount: page.length, cloneCount: clone.length, pairs,
+    stageText: stage.textContent,
+    // Does the preview contain a second copy of a string the page has once?
+    dupes: ["Colour as structure", "Colour is doing most of the work here",
+            "reusing those is cheaper", "signal the page was already giving us for free"]
+      .map((s) => ({ s, n: stage.textContent.split(s).length - 1 })),
+    nodeCount: stage.querySelectorAll("*").length,
+    dbg: pop.dataset.dbg,
+  });
 }
 """
 
@@ -100,12 +94,10 @@ def main():
     failures = []
 
     def check(name, cond, detail=""):
-        print(f"  [{'PASS' if cond else 'FAIL'}] {name:52} {detail}")
+        print(f"  [{'PASS' if cond else 'FAIL'}] {name:46} {detail}")
         if not cond:
             failures.append(name)
 
-    # Overridable so a deliberate bug can be reinstated in a copy and this same
-    # test run against it, to prove the assertions above actually bite.
     ext = sys.argv[1] if len(sys.argv) > 1 else SRC
 
     with fixture_server() as server:
@@ -116,71 +108,59 @@ def main():
             m.cmd("WebDriver:Navigate", {"url": server.fixtures + "/article.html"})
             time.sleep(4)
             r = m.cmd("WebDriver:ExecuteAsyncScript",
-                      {"script": PROBE, "args": [SCALE], "scriptTimeout": 30000})
+                      {"script": PROBE, "args": [SCALE, SELECTOR], "scriptTimeout": 30000})
             d = r.get("value", r)
         finally:
             stop_firefox(proc)
 
-    runs = d["runs"]
-    check("the preview drew something", len(runs) >= 4, f"{len(runs)} runs")
+    check("the preview opened", d["open"])
+    # The clone is the whole content subtree, so it holds every one of them --
+    # 0.95 rather than exactly 1 because a page can have an element the
+    # browser does not lay out at the size we filter on.
+    check("it holds the page's elements, not a subset",
+          d["cloneCount"] >= d["pageCount"] * 0.95,
+          f"{d['cloneCount']} of {d['pageCount']}")
 
-    # 1. one run is one line box
-    multiline = [r for r in runs if r["lineBoxes"] > 1.5]
-    check("every run is exactly one line box", not multiline,
-          "; ".join(f"{r['lineBoxes']:.1f} boxes: {r['text'][:28]!r}" for r in multiline)
-          or f"{len(runs)} runs, all 1 box")
+    # The strongest form of "nothing overlaps": nothing is drawn twice either.
+    # The old preview emitted a text run and a cloned graphic for the same
+    # content and they landed on top of each other; this is the check that
+    # would have caught it directly.
+    bad = [x for x in d["dupes"] if x["n"] != 1]
+    check("every string appears exactly once", not bad,
+          "; ".join(f"{x['s'][:22]!r} x{x['n']}" for x in bad) or
+          f"{len(d['dupes'])} sampled, all 1")
 
-    # 1b. and the cause: no raw whitespace survived from the source
-    withws = [r for r in runs if r["hasNewline"]]
-    check("no run carries a raw newline or tab", not withws,
-          "; ".join(repr(r["text"][:34]) for r in withws) or "none")
+    pairs = d["pairs"]
+    check("there are elements to compare", len(pairs) >= 8, f"{len(pairs)} pairs")
 
-    doubles = [r for r in runs if r["hasDoubleSpace"]]
-    check("no run carries a collapsed double space", not doubles,
-          "; ".join(repr(r["text"][:34]) for r in doubles) or "none")
+    # Offsets between elements are the page's, scaled. This is the claim: the
+    # preview is the page's layout, not a reconstruction of it.
+    worst = 0.0
+    worst_of = ""
+    for p in pairs:
+        sx = max(abs(p["dx"]), abs(p["dy"]))
+        if sx > worst:
+            worst, worst_of = sx, f"{p['tag']} {p['text']!r}"
+    # The pair subtracted is itself measured, so both sides carry the same
+    # sub-pixel rounding; anything above a pixel is a real disagreement.
+    check("element offsets are the page's, scaled by 0.75", worst <= 1.0,
+          f"worst {worst:.2f}px of stage error ({worst_of})")
 
-    trailing = [r for r in runs if r["trailing"]]
-    check("no run carries trailing whitespace", not trailing,
-          "; ".join(repr(r["text"][:34]) for r in trailing) or "none")
+    sizerr = max(
+        (abs(p["cw"] - p["pw"] * SCALE) + abs(p["ch"] - p["ph"] * SCALE) for p in pairs),
+        default=0.0,
+    )
+    check("element sizes are the page's, scaled by 0.75", sizerr <= 1.0,
+          f"worst {sizerr:.2f}px")
 
-    # The objective form of "the text overlaps": any two rendered runs whose
-    # boxes overlap in both axes. This is what found the real bugs -- a run
-    # whose box was far taller than its line, and a run shifted left by
-    # trimming the whitespace it starts with.
-    pairs = []
-    for i in range(len(runs)):
-        for j in range(i + 1, len(runs)):
-            a, b = runs[i], runs[j]
-            ox = min(a["left"] + a["w"], b["left"] + b["w"]) - max(a["left"], b["left"])
-            oy = min(a["top"] + a["h"], b["top"] + b["h"]) - max(a["top"], b["top"])
-            if ox > 2 and oy > 2:
-                pairs.append(f"{a['text'][:14]!r}/{b['text'][:14]!r} "
-                             f"{ox:.0f}x{oy:.0f} at y {a['top']:.0f},{b['top']:.0f}")
-    check("no two rendered runs overlap", not pairs,
-          "; ".join(pairs[:3]) or f"{len(runs)} runs, all disjoint")
-
-    # 2. the font is scaled
-    check("the font is scaled by 0.75",
-          abs(runs[0]["fs"] - round(d["pageFont"] * SCALE)) <= 1,
-          f"preview {runs[0]['fs']}px vs page {d['pageFont']}px -> "
-          f"expected {round(d['pageFont'] * SCALE)}px")
-
-    # 3. the pitch is scaled, which is what the unscaled-y bug broke
-    check("the line pitch is scaled by 0.75",
-          d["previewPitch"] and abs(d["previewPitch"] - d["pagePitch"] * SCALE) <= 1.5,
-          f"gaps {d['pitchGaps']}, mode {d['previewPitch']}px; "
-          f"page {d['pagePitch']:.2f}px -> expected {d['pagePitch'] * SCALE:.1f}px")
-
-    # 4. no forced box, so a wrap would be visible
-    forced = [r for r in runs if r["inlineWidth"] or r["inlineHeight"]]
-    check("no run has a width or height forced on it", not forced,
-          "; ".join(f"{r['inlineWidth']}/{r['inlineHeight']}" for r in forced) or "none")
+    check("the clone is one subtree, not many pieces", d["nodeCount"] > 20,
+          f"{d['nodeCount']} nodes")
 
     print()
     if failures:
         print("FAILED: " + ", ".join(failures))
         return 1
-    print("the preview reproduces the page's line boxes")
+    print("the preview is the page, translated and scaled")
     return 0
 
 
