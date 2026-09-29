@@ -96,6 +96,18 @@ html.vugluscr_embedded {
   visibility: visible;
 }
 
-.scrollpeak-magnifier__canvas {
-  display: block;
+/* The preview's content is real DOM cloned from the page -- an inline <svg>
+ * cloned into this document keeps the page's own CSS, which is how most icon
+ * systems get their colour. That is the whole reason this is not a canvas. */
+.scrollpeak-magnifier__stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.scrollpeak-magnifier__line {
+  white-space: pre;
+  line-height: 1;
+  transform-origin: 0 0;
 }

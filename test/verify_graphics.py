@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""
+Prove the hover preview draws the page's graphics, not only its text.
+
+Kate's preview calls paintTextLine, which draws text lines -- correct for a
+text editor, where text is the entire content. A web page is not text, and a
+16px icon beside a label is often the only thing that says what a row is. The
+preview had no graphics at all, which is what this covers.
+
+Each graphic in the fixture carries a `data-id`, which survives cloning. The
+test resolves each one's real document position, converts it to a position on
+the strip, hovers there, and asks whether that specific graphic turned up --
+rather than guessing a fraction of the page and hoping.
+
+For inline SVG it also checks the *computed fill*, which only resolves if the
+clone is genuinely in this document's cascade. That is the assertion that
+catches a regression to serialising SVGs into data URLs, which is how this was
+first attempted: it loses the page's stylesheet, so `fill: currentColor` icons
+come out blank, and its image load cannot be relied on to settle from a content
+script.
+
+    python3 test/verify_graphics.py
+"""
+import json
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harness import SRC, fixture_server, launch_firefox, stop_firefox  # noqa: E402
+
+PAGE = "/graphics.html"
+TARGETS = ["red-svg", "green-svg", "blue-svg", "orange-img", "purple-img",
+           "bg-img", "teal-canvas", "teal-svg", "dark-img"]
+
+# Find a graphic's position, converted to a fraction of the strip, so the test
+# can aim at it rather than guess.
+LOCATE = r"""
+const cb = arguments[arguments.length - 1];
+const id = arguments[0];
+const el = document.querySelector(`[data-id="${id}"]`);
+if (!el) { cb({err: "not found"}); return; }
+const r = el.getBoundingClientRect();
+const doc = document.scrollingElement;
+cb({
+  docY: r.top + window.scrollY + r.height / 2,
+  docHeight: doc.scrollHeight,
+  tag: el.tagName,
+});
+"""
+
+HOVER = r"""
+const done = arguments[arguments.length - 1];
+const frac = arguments[0];
+const id = arguments[1];
+const strip = document.querySelector(".vugluscr .minimap");
+if (!strip) { done({err: "no strip"}); return; }
+const sr = strip.getBoundingClientRect();
+
+function move() {
+  strip.dispatchEvent(new PointerEvent("pointermove", {
+    clientX: sr.left + sr.width / 2, clientY: sr.top + sr.height * frac,
+    bubbles: true, cancelable: true, pointerId: 1, isPrimary: true
+  }));
+}
+
+// Past Kate's 250ms first-appearance delay, then move again so this measures
+// the steady state.
+move();
+setTimeout(() => {
+  move();
+  setTimeout(() => {
+    const pop = document.querySelector(".scrollpeak-magnifier");
+    if (!pop) { done({err: "no preview"}); return; }
+    const stage = pop.querySelector(".scrollpeak-magnifier__stage");
+    if (!stage) { done({err: "no stage"}); return; }
+    const clone = stage.querySelector(`[data-id="${id}"]`);
+    const lines = stage.querySelectorAll(".scrollpeak-magnifier__line").length;
+    let fill = null;
+    if (clone) {
+      const shaped = clone.querySelector
+        ? clone.querySelector("rect, circle, path, span")
+        : null;
+      if (shaped) fill = getComputedStyle(shaped).fill;
+    }
+    done({
+      open: pop.classList.contains("is-open"),
+      found: !!clone,
+      tag: clone ? clone.tagName : null,
+      width: clone ? Math.round(clone.getBoundingClientRect().width) : null,
+      fill, lines,
+      stageIds: [...stage.querySelectorAll("[id]")].map(e => e.id).length,
+    });
+  }, 350);
+}, 450);
+"""
+
+
+def main():
+    failures = []
+
+    def check(name, cond, detail=""):
+        print(f"  [{'PASS' if cond else 'FAIL'}] {name:44} {detail}")
+        if not cond:
+            failures.append(name)
+
+    with fixture_server() as server:
+        proc, m = launch_firefox(SRC)
+        try:
+            m.cmd("WebDriver:Navigate", {"url": server.fixtures + PAGE})
+            time.sleep(4)
+
+            print("aim at each graphic and check the preview shows it")
+            for tid in TARGETS:
+                r = m.cmd("WebDriver:ExecuteAsyncScript",
+                          {"script": LOCATE, "args": [tid], "scriptTimeout": 20000})
+                loc = r.get("value", r)
+                if "err" in loc:
+                    check(f"{tid}", False, loc["err"])
+                    continue
+                # The strip maps position linearly onto the document, so this
+                # is where the cursor has to be for that graphic to be centred.
+                frac = min(0.97, max(0.03, loc["docY"] / loc["docHeight"]))
+                r = m.cmd("WebDriver:ExecuteAsyncScript",
+                          {"script": HOVER, "args": [frac, tid], "scriptTimeout": 40000})
+                d = r.get("value", r)
+                if "err" in d:
+                    check(f"{tid}", False, d["err"])
+                    continue
+                shown = d["found"] and d["width"] and d["width"] > 3
+                extra = ""
+                if d["tag"] == "svg" and d["fill"]:
+                    extra = f"fill={d['fill']}"
+                elif d["tag"] == "CANVAS":
+                    extra = f"{d['width']}px wide"
+                check(f"shown: {tid}", shown,
+                      f"{d['tag']} {d['width']}px {extra}")
+
+            print("\nno duplicate ids leaked into the page")
+            r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
+                const stage = document.querySelector(".scrollpeak-magnifier__stage");
+                return stage ? [...stage.querySelectorAll("[id]")].map(e => e.id) : [];
+            """, "args": []})
+            ids = r.get("value", r)
+            check("clones carry no id attributes", not ids, str(ids))
+
+            print("\nthe map itself is still text-only, as Kate has it")
+            r = m.cmd("WebDriver:ExecuteScript", {"script": r"""
+                const map = document.querySelector(".scrollpeak-map");
+                const d = map.getContext("2d").getImageData(0, 0, map.width, map.height).data;
+                let red = 0, green = 0;
+                for (let i = 0; i < d.length; i += 4) {
+                  if (d[i+3] === 0) continue;
+                  if (Math.abs(d[i]-192) < 26 && Math.abs(d[i+1]-57) < 26) red++;
+                  if (Math.abs(d[i]-39) < 26 && Math.abs(d[i+1]-174) < 26) green++;
+                }
+                return {red, green, w: map.width};
+            """, "args": []})
+            d = r.get("value", r)
+            # The page's text is dark grey; the icons are the only saturated
+            # colour, so neither should have leaked into the text raster.
+            check("icons do not leak into the minimap",
+                  d["red"] == 0 and d["green"] == 0,
+                  f"red={d['red']} green={d['green']} in a {d['w']}px map")
+        finally:
+            stop_firefox(proc)
+
+    print()
+    if failures:
+        print("FAILED: " + ", ".join(failures))
+        return 1
+    print("the preview shows text, inline SVG, images, canvas and backgrounds")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

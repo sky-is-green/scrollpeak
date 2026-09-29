@@ -6,19 +6,26 @@
 //
 //   * A frameless tooltip window (Qt::ToolTip | FramelessWindowHint |
 //     BypassWindowManagerHint) -- no chrome, it does not take focus.
-//   * It renders the REAL text of the hovered region through the real text
-//     renderer, in the document's own font, at setScaleFactor(0.75) -- that
-//     is, SMALLER than the editor's normal text. It is a readable preview, not
-//     a magnification.
 //   * Half the view's width by a fifth of its height, centred on the hovered
 //     line, clamped so it stays on screen, placed left of the scrollbar.
-//   * Debounced by 250ms (m_delayTextPreviewTimer) so sweeping the mouse
-//     across the scrollbar does not strobe it.
+//   * Debounced 250ms on first appearance only, so sweeping the pointer past
+//     the scrollbar does not flash a window; repaints on every move after.
+//   * The real text of the hovered region, in the document's own font, at 0.75
+//     scale -- that is, smaller than the editor's normal text. A readable
+//     preview, not a magnification.
 //
-// All of that is reproduced. Kate can hand the preview its line numbers and
-// let the renderer lay the text out; here the lines come from TextMap with
-// their own measured geometry and computed font, so the preview draws them at
-// the same size and position they occupy on the page, scaled by 0.75.
+// One deliberate difference. Kate's preview calls paintTextLine, which draws
+// text lines, because in a text editor text is the entire content. A web page
+// is not text, and a 16px icon beside a label is often the only thing that
+// says what a row is. So this also shows the page's graphics.
+//
+// They are drawn as DOM, not onto a canvas. Cloning an inline <svg> into this
+// document keeps it in the same cascade, so `fill: currentColor` and the
+// page's own icon classes still apply -- which is how most icon systems colour
+// themselves. Serialising an <svg> to a data URL and rasterising it loses all
+// of that, and additionally depends on an image load that a content script
+// cannot rely on settling. Images, canvas and CSS background images are
+// handled the same way, so they keep their real styling too.
 
 (function () {
   // Kate: m_delayTextPreviewTimer.setInterval(250)
@@ -42,10 +49,9 @@
     popup.style.pointerEvents = "none";
     document.body.appendChild(popup);
 
-    const canvas = document.createElement("canvas");
-    canvas.className = "scrollpeak-magnifier__canvas";
-    canvas.setAttribute("aria-hidden", "true");
-    popup.appendChild(canvas);
+    const stage = document.createElement("div");
+    stage.className = "scrollpeak-magnifier__stage";
+    popup.appendChild(stage);
 
     let timer = null;
     let visible = false;
@@ -54,7 +60,6 @@
     let created = false;
     let latestY = 0;
 
-    // Kate: hideTextPreview(), and the WindowDeactivate event filter.
     function hide() {
       clearTimeout(timer);
       timer = null;
@@ -64,103 +69,151 @@
       popup.setAttribute("aria-hidden", "true");
     }
 
+    /** Rebuild the preview for the document offset under the cursor. */
     function paint(docY) {
-      const dpr = window.devicePixelRatio || 1;
       const width = Math.round(window.innerWidth * WIDTH_FRACTION);
       const height = Math.round(window.innerHeight * HEIGHT_FRACTION);
-
       popup.style.width = `${width}px`;
       popup.style.height = `${height}px`;
-      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-      }
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
 
-      const g = canvas.getContext("2d");
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.fillStyle = ctx.map.background;
-      g.fillRect(0, 0, width, height);
-
-      // Kate centres the hovered line, then shifts the preview so that line
-      // stays under the cursor as the window scrolls.
+      // Kate centres the hovered line. He can use the renderer's own line
+      // height; we derive one, because a page's line boxes vary and a
+      // hardcoded guess mis-centres the preview on any site that does not use
+      // the browser default.
       const lineHeight = ctx.map.medianLineHeight() || 18;
       const rows = Math.max(1, Math.floor(height / (lineHeight * SCALE)));
       const centre = docY - (rows / 2) * lineHeight;
-
-      g.textBaseline = "top";
-
-      // The lines that fall inside the preview's slice of the document.
-      //
-      // A page is not linear text the way a document is: a grid or flex
-      // layout puts a caption and a link side by side on the same row, and
-      // drawing both at their own x overdraws them. Kate cannot hit this,
-      // because he lays out a linear buffer. So the visible lines are grouped
-      // into rows by their own y, each row is sorted left to right, and a line
-      // that would collide with one already placed in its row is dropped.
       const left = ctx.map.contentLeftOf();
+
+      // Text and graphics, interleaved in document order so that stacking
+      // matches the page. With real coordinates this also removes the need
+      // for the declutter a canvas needed: two elements side by side in a
+      // flex row have non-overlapping x, so they simply do not collide.
+      const items = [];
       const lines = ctx.map.lines;
-      // Start from a binary search rather than the top of the document: this
-      // runs on every pointermove, and scanning 8,000 lines each time to
-      // reach the middle of the page is most of the hover cost.
-      const visible = [];
-      const first = Math.max(0, ctx.map.indexAtY(centre - 4 * lineHeight));
-      for (let i = first; i < lines.length; i++) {
+      const firstLine = ctx.map.indexAtY(centre - 2 * lineHeight);
+      for (let i = firstLine; i < lines.length; i++) {
         const line = lines[i];
         const top = (line.y - centre) * SCALE;
-        if (top > height) break; // lines are sorted by y
+        if (top > height) break;
         if (top + line.height * SCALE < 0) continue;
-        visible.push({ line, top });
+        items.push({ y: line.y, x: line.x, make: () => textNode(line, left, centre) });
       }
-
-      let drawn = 0;
-      let rowTop = null;
-      let rowRight = -Infinity;
-      for (let i = 0; i < visible.length; i++) {
-        // Start a new row whenever the next line sits clearly below the one
-        // that opened this row. The tolerance is a fraction of that line's own
-        // height, so a single tall element cannot merge the whole page.
-        const current = visible[i];
-        if (rowTop === null || current.top - rowTop > current.line.height * SCALE * 0.6) {
-          rowTop = current.top;
-          rowRight = -Infinity;
-          // Order this row left to right before placing anything in it.
-          let j = i;
-          const row = [];
-          while (j < visible.length &&
-                 visible[j].top - rowTop <= current.line.height * SCALE * 0.6) {
-            row.push(visible[j]);
-            j++;
-          }
-          row.sort((a, b) => a.line.x - b.line.x);
-          for (const item of row) {
-            const x = (item.line.x - left) * SCALE;
-            if (x < rowRight) continue; // would overdraw a neighbour
-            g.fillStyle = item.line.color;
-            g.font = withWeight(item.line.font, item.line.bold, item.line.italic);
-            g.fillText(item.line.text, x, item.top);
-            rowRight = Math.max(rowRight, x + g.measureText(item.line.text).width);
-            drawn++;
-          }
-          i = j - 1;
-          continue;
+      const boxes = ctx.map.boxes;
+      if (boxes.length) {
+        const firstBox = lowerBound(boxes, centre - 2 * lineHeight, (b) => b.y);
+        for (let i = firstBox; i < boxes.length; i++) {
+          const box = boxes[i];
+          const top = (box.y - centre) * SCALE;
+          if (top > height) break;
+          if (top + box.height * SCALE < 0) continue;
+          items.push({ y: box.y, x: box.x, make: () => graphicNode(box, left, centre) });
         }
       }
-      // Surfaced for the smoke test and for anyone debugging a site that
-      // renders oddly; costs nothing when nobody is looking.
-      popup.dataset.drawn = String(drawn);
-      popup.dataset.visible = String(visible.length);
+      items.sort((a, b) => a.y - b.y || a.x - b.x);
+
+      const frag = document.createDocumentFragment();
+      for (const item of items) {
+        const el = item.make();
+        if (el) frag.appendChild(el);
+      }
+      stage.style.background = ctx.map.background;
+      stage.replaceChildren(frag);
+      popup.dataset.items = String(items.length);
+      // Published for the hover-tracking and alignment tests, and for
+      // debugging a site that previews oddly.
       popup.dataset.dbg = JSON.stringify({
         docY: Math.round(docY),
         centre: Math.round(centre),
         lineHeight: Math.round(lineHeight * 10) / 10,
         rows,
-        total: ctx.map.lines.length,
+        items: items.length,
+        lines: ctx.map.lines.length,
+        boxes: ctx.map.boxes.length,
         docHeight: Math.round(ctx.map.docHeight),
-        firstY: ctx.map.lines.length ? Math.round(ctx.map.lines[0].y) : null,
-        lastY: ctx.map.lines.length ? Math.round(ctx.map.lines[ctx.map.lines.length - 1].y) : null,
       });
+    }
+
+    /** One line of text, positioned and styled as it is on the page. */
+    function textNode(line, left, centre) {
+      const el = document.createElement("span");
+      el.className = "scrollpeak-magnifier__line";
+      el.textContent = line.text;
+      place(el, line.x - left, line.y - centre, 0, line.height);
+      el.style.color = line.color;
+      el.style.fontFamily = line.family;
+      el.style.fontSize = `${Math.max(1, Math.round(line.fontSize * SCALE))}px`;
+      if (line.bold) el.style.fontWeight = "600";
+      if (line.italic) el.style.fontStyle = "italic";
+      return el;
+    }
+
+    /**
+     * One graphic.
+     *
+     * Everything is cloned rather than reconstructed, so an image keeps its
+     * src, its attributes and its page styling, and a background-image element
+     * keeps the class its background comes from. Cloning an <svg> into this
+     * document is the point: it stays in the page's cascade, so
+     * `fill: currentColor` and the site's own icon classes still apply.
+     *
+     * A cloned <canvas> is blank, so its pixels are copied across. Images are
+     * left to the browser: the clone reuses the cached resource, so this costs
+     * a node rather than a fetch.
+     */
+    function graphicNode(box, left, centre) {
+      const el = box.el;
+      const w = box.width * SCALE;
+      const h = box.height * SCALE;
+      if (w <= 0 || h <= 0) return null;
+
+      let node;
+      try {
+        node = el.cloneNode(true);
+      } catch {
+        return null;
+      }
+      if (!node) return null;
+
+      if (el.tagName === "CANVAS") {
+        const g = node.getContext("2d");
+        if (!g) return null;
+        try {
+          g.drawImage(el, 0, 0);
+        } catch {
+          return null;
+        }
+      }
+      if (el.tagName === "IMG") {
+        const src = el.currentSrc || el.src;
+        if (!src) return null;
+        // currentSrc is the picture-selected source, which can differ from the
+        // attribute; prefer it when the clone did not inherit it.
+        if (!node.currentSrc && !node.src) node.src = src;
+        node.alt = "";
+      }
+
+      // A clone in the same document must not duplicate the page's ids, or the
+      // page's own getElementById and querySelectorAll start matching the
+      // preview.
+      node.removeAttribute("id");
+      node.removeAttribute("name");
+      for (const el2 of node.querySelectorAll("[id]")) el2.removeAttribute("id");
+
+      place(node, box.x - left, box.y - centre, w, h);
+      return node;
+    }
+
+    function place(el, x, y, w, h) {
+      el.style.position = "absolute";
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+      if (w) el.style.width = `${w}px`;
+      if (h) el.style.height = `${h}px`;
+      el.style.margin = "0";
+      el.style.maxWidth = "none";
+      el.setAttribute("aria-hidden", "true");
+      el.style.pointerEvents = "none";
     }
 
     function position(docY) {
@@ -193,14 +246,14 @@
      * Kate's showTextPreviewDelayed().
      *
      * The 250ms timer guards the *first* appearance only, so that sweeping
-     * the pointer past the scrollbar does not flash a window. Once the
-     * preview exists, Kate calls showTextPreview() directly on every
-     * mouseMoveEvent -- and note it does not restart the timer either, so the
-     * first hover fires 250ms after it *began*, not after it settled.
+     * the pointer past the scrollbar does not flash a window. Once the preview
+     * exists, Kate calls showTextPreview() directly on every mouseMoveEvent --
+     * and note it does not restart the timer either, so the first hover fires
+     * 250ms after it *began*, not after it settled.
      *
      * Debouncing every move instead means the timer is reset continuously
      * while the pointer is moving and only fires once it stops, so the preview
-     * visibly lags and then jumps. That is what this used to do.
+     * visibly lags and then jumps.
      */
     function schedule(clientY) {
       latestY = clientY;
@@ -221,8 +274,7 @@
     // In Kate the map *is* the scrollbar, so there is no other place for the
     // pointer to be. vugluscr's rail is the map plus a separate track beside
     // it, and both stretch to the same height, so hovering the track used to
-    // fire pointerleave on the map and kill the preview -- the one strip a
-    // user thinks of as "the scrollbar" was the part that did nothing.
+    // fire pointerleave on the map and kill the preview.
     const rail = ctx.rail.rail.domNode;
     rail.addEventListener("pointermove", (e) => schedule(e.clientY));
     rail.addEventListener("pointerleave", hide);
@@ -232,18 +284,13 @@
     // Committing to a jump: get it out of the way immediately.
     // Note the double `rail`: Scrollbar.rail is the ScrollRail, and ScrollRail
     // is what exposes domNode. Scrollbar itself has no domNode.
-    ctx.rail.rail.domNode.addEventListener("pointerdown", hide);
+    rail.addEventListener("pointerdown", hide);
 
     return {
       el: popup,
       hide,
       repaint: () => {
-        if (visible) {
-          const rect = ctx.strip.getBoundingClientRect();
-          const docY = ctx.map.documentOffsetAt(rect.top + rect.height / 2, rect);
-          paint(docY);
-          position(docY);
-        }
+        if (visible) show(latestY);
       },
       teardown() {
         hide();
@@ -257,12 +304,16 @@
     return Math.min(max, Math.max(min, v));
   }
 
-  /** Re-apply weight and slant to a computed `font` shorthand. */
-  function withWeight(font, bold, italic) {
-    let out = font;
-    if (bold && !/\bbold\b|\d{3}(?:00|50)/.test(out)) out = `bold ${out}`;
-    if (italic && !/\bitalic\b|\boblique\b/.test(out)) out = `italic ${out}`;
-    return out;
+  /** First index whose y is at or below `y`. Sorted by y. */
+  function lowerBound(sorted, y, key) {
+    let lo = 0;
+    let hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (key(sorted[mid]) < y) lo = mid + 1;
+      else hi = mid;
+    }
+    return Math.max(0, lo - 1);
   }
 
   globalThis.ScrollPeekMagnifier = { mount };

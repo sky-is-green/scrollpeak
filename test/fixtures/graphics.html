@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Graphics fixture</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0 auto; max-width: 44rem; padding: 2rem 1rem 8rem; color: #1c1c1e; background: #fdfdfc; }
+  h2 { font-size: 1.3rem; margin-top: 2.5rem; color: #1d4e89; }
+  p { margin: 0 0 1rem; }
+  .row { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; }
+
+  /* Small icons, the case that motivated this: a 16px glyph beside a label
+     is easy to miss in a wall of text. */
+  .icon { width: 16px; height: 16px; flex: none; }
+  .icon-lg { width: 40px; height: 40px; flex: none; }
+  .file { border-radius: 2px; }
+  .bgimg { width: 120px; height: 24px; flex: none;
+           background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 24'%3E%3Crect width='120' height='24' fill='%23c0392b'/%3E%3Crect x='6' y='6' width='12' height='12' fill='%23fff'/%3E%3C/svg%3E"); }
+  .spacer { height: 42vh; }
+</style>
+</head>
+<body>
+<h1>Graphics in the preview</h1>
+<p>Every row below pairs a label with something drawn rather than typed, so
+the preview has a way to tell whether it is showing the page's graphics or only
+its text.</p>
+
+<h2>Inline SVG icons</h2>
+<div class="row">
+  <svg class="icon" data-id="red-svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#c0392b"/><rect x="4" y="4" width="8" height="8" fill="#fff"/></svg>
+  <span>red square, 16px</span>
+</div>
+<div class="row">
+  <svg class="icon" data-id="green-svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#27ae60"/></svg>
+  <span>green circle, 16px</span>
+</div>
+<div class="row">
+  <svg class="icon-lg" data-id="blue-svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="6" fill="#2980b9"/><path d="M10 28 L20 12 L30 28 Z" fill="#fff"/></svg>
+  <span>blue triangle, 40px</span>
+</div>
+
+<h2>Data-URL images</h2>
+<div class="row">
+  <img class="icon file" width="16" height="16" alt="orange" data-id="orange-img"
+       src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23e67e22'/%3E%3C/svg%3E" />
+  <span>orange block, 16px</span>
+</div>
+<div class="row">
+  <img class="icon file" width="16" height="16" alt="purple" data-id="purple-img"
+       src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%238e44ad'/%3E%3C/svg%3E" />
+  <span>purple block, 16px</span>
+</div>
+
+<h2>CSS background image</h2>
+<div class="row">
+  <span class="bgimg" data-id="bg-img"></span>
+  <span>red bar, 120x24, from background-image</span>
+</div>
+
+<h2>Canvas</h2>
+<div class="row">
+  <canvas class="icon" width="16" height="16" id="c1" data-id="teal-canvas"></canvas>
+  <span>teal square, 16px, painted into a canvas</span>
+</div>
+
+<div class="spacer"></div>
+
+<h2>Lower down</h2>
+<div class="row">
+  <svg class="icon" data-id="teal-svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#16a085"/></svg>
+  <span>teal square, 16px, after the spacer</span>
+</div>
+<div class="row">
+  <img class="icon file" width="16" height="16" alt="dark" data-id="dark-img"
+       src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%232c3e50'/%3E%3C/svg%3E" />
+  <span>dark block, 16px, after the spacer</span>
+</div>
+<div class="spacer"></div>
+<p id="tail">The end.</p>
+
+<script>
+  const g = document.getElementById("c1").getContext("2d");
+  g.fillStyle = "#16a085";
+  g.fillRect(0, 0, 16, 16);
+</script>
+</body>
+</html>

@@ -116,15 +116,12 @@ setTimeout(() => {
     out.expectedWidth = Math.round(window.innerWidth / 2);
     out.expectedHeight = Math.round(window.innerHeight / 5);
     out.size = out.contentWidth + "x" + out.contentHeight;
-    const cv = pop.querySelector("canvas");
-    if (cv) {
-      const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
-      let ink = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i] < 200 || d[i + 1] < 200 || d[i + 2] < 200) ink++;
-      }
-      out.text_pixels = ink;
-    }
+    // The preview is DOM, not a canvas: cloned page elements positioned in a
+    // stage. Checked by what is in it, which also proves it is not empty.
+    const stage = pop.querySelector(".scrollpeak-magnifier__stage");
+    out.hasStage = !!stage;
+    out.text_lines = stage ? stage.querySelectorAll(".scrollpeak-magnifier__line").length : 0;
+    out.items = pop.dataset.items ? Number(pop.dataset.items) : 0;
   }
   done(out);
 }, 800);
@@ -171,7 +168,9 @@ def main():
         for k, v in hover.items():
             ok = (k in ("exists", "open", "placed_left_of_strip",
                         "fully_on_screen") and v) or \
-                 (k == "text_pixels" and v > 200) or \
+                 (k == "hasStage" and v) or \
+                 (k == "text_lines" and v > 0) or \
+                 (k == "items" and v > 0) or \
                  (k == "contentWidth" and abs(v - hover["expectedWidth"]) <= 2) or \
                  (k == "contentHeight" and abs(v - hover["expectedHeight"]) <= 2) or \
                  k == "expectedWidth" or k == "expectedHeight" or k == "size"

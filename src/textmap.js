@@ -41,6 +41,9 @@
   // Kate: simpleMode -- m_doc->lines() > 7500 skips highlighting work
   const SIMPLE_MODE_LINE_COUNT = 7500;
 
+  // Cap on collected graphics. See collectBoxes().
+  const MAX_BOXES = 600;
+
   const SKIP_TAGS = new Set([
     "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE",
     "CANVAS", "IFRAME", "OBJECT", "EMBED", "SVG",
@@ -63,6 +66,8 @@
 
       /** Kate's per-line data. @type {Line[]} */
       this.lines = [];
+      /** Painted graphics, for the preview. @type {Array<object>} */
+      this.boxes = [];
       this.docHeight = 1;
       this.charIncrement = 1;
       this.lineIncrement = 1;
@@ -152,7 +157,8 @@
             x: rects[i].left + scrollX,
             text: slice,
             color: style.color,
-            font: style.font,
+            family: style.family,
+            fontSize: style.fontSize,
             bold: style.bold,
             italic: style.italic,
           });
@@ -176,6 +182,18 @@
       kept.sort((a, b) => a.y - b.y);
       this.lines = kept;
 
+      // Painted graphics: images, inline SVG, canvas, background images.
+      //
+      // Kate's preview calls paintTextLine, which draws text lines, because in
+      // a text editor text is the whole of the content. A web page is not
+      // text, and an icon is often the only thing that tells you what a
+      // section is -- a file type, a status, a warning. So the preview shows
+      // them too. The minimap stays text-only, which is faithful.
+      this.boxes = this.collectBoxes(root).filter(
+        (b) => b.y > -b.height && b.y < maxY + b.height,
+      );
+      this.boxes.sort((a, b) => a.y - b.y);
+
       // Kate's preview starts at xStart = 0, so what it shows is the line's
       // own indentation, not its position on the page. A page's analogue is
       // the offset from the content's left edge -- without this, a site with
@@ -191,6 +209,58 @@
       this.revision++;
       return lines;
     }
+
+    /**
+     * Collect the things on the page that paint something other than glyphs.
+     *
+     * Bounded on purpose: `querySelectorAll` on a big page returns thousands
+     * of nodes, and a rect read for each would cost more than the text pass.
+     * A page with more than MAX_BOXES of them gets the first MAX_BOXES in
+     * document order, which is where the header and the first screenful are.
+     */
+    collectBoxes(root) {
+      const scrollY = window.scrollY;
+      const scrollX = window.scrollX;
+      const found = [];
+      const seen = new Set();
+
+      const consider = (el) => {
+        if (!el || seen.has(el)) return;
+        if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) return;
+        seen.add(el);
+
+        const rects = Array.from(el.getClientRects()).filter(
+          (r) => r.width > 0.5 && r.height > 0.5,
+        );
+        for (const rect of rects) {
+          if (rect.width < 1 || rect.height < 1) continue;
+          found.push(makeBox(el, rect, scrollX, scrollY));
+        }
+      };
+
+      // Media elements and inline SVG draw directly onto a canvas.
+      for (const el of root.querySelectorAll(
+        "img, svg, canvas, video, picture img, object, embed",
+      )) {
+        if (found.length >= MAX_BOXES) break;
+        consider(el);
+      }
+
+      // Background images. The page's own background is excluded: the preview
+      // already paints the page background, and html/body would otherwise
+      // cover the whole region.
+      for (const el of root.querySelectorAll("*")) {
+        if (found.length >= MAX_BOXES) break;
+        if (el === document.body || el === document.documentElement) continue;
+        if (seen.has(el)) continue;
+        const cs = getComputedStyle(el);
+        if (!cs.backgroundImage || cs.backgroundImage === "none") continue;
+        consider(el);
+      }
+
+      return found;
+    }
+
 
     /** Left edge of the main content column, robustly. */
     contentLeftOf() {
@@ -248,16 +318,19 @@
       // Kate's simpleMode falls back to the default text colour on very large
       // documents. We do the same, but the real cost saving here is the
       // per-element getComputedStyle, which the cache already dedupes.
+      const size = parseFloat(cs.fontSize) || 16;
       const style = simpleMode
         ? {
             color: cs.color,
-            font: `${cs.fontSize} ${cs.fontFamily}`,
+            family: cs.fontFamily,
+            fontSize: size,
             bold: false,
             italic: false,
           }
         : {
             color: cs.color,
-            font: `${cs.fontSize} ${cs.fontFamily}`,
+            family: cs.fontFamily,
+            fontSize: size,
             bold: parseInt(cs.fontWeight, 10) >= 600,
             italic: cs.fontStyle === "italic" || cs.fontStyle === "oblique",
           };
@@ -521,6 +594,26 @@
       }
       return Math.max(0, lo - 1);
     }
+  }
+
+  /**
+   * Describe an element for the preview.
+   *
+   * The preview clones these into the page rather than rasterising them, so
+   * there is nothing to cache and nothing to load: an inline <svg> cloned
+   * into this document keeps the page's own styling, which is what most icon
+   * systems rely on. A serialised data URL does not, and its image load
+   * cannot be relied on to settle from a content script.
+   */
+  function makeBox(el, rect, scrollX, scrollY) {
+    return {
+      el,
+      x: rect.left + scrollX,
+      y: rect.top + scrollY,
+      width: rect.width,
+      height: rect.height,
+      kind: el.tagName,
+    };
   }
 
   function clamp(v, min, max) {
