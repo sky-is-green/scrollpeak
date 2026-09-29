@@ -93,9 +93,10 @@
   //
   // Thresholds measured across real pages. YouTube's watch page has a 797x598
   // player; Reddit's front page is 38 large pictures covering 56% of the
-  // document and eBay's search 9 pictures over 43% of the first screen. BBC's
-  // front is 43 covering 33%. Wikipedia's infobox holds a 250x141 video
-  // thumbnail and GitHub has one large picture at 2%: both keep the raster.
+  // document and BBC's front 43 covering 33%. Wikipedia's infobox holds a
+  // 250x141 video thumbnail and GitHub has one large picture at 2%: both keep
+  // the raster. The top-of-page rule below catches eBay and Amazon, whose
+  // long documents dilute any fraction.
   const MEDIA_VIDEO_MIN_W = 300;
   const MEDIA_VIDEO_MIN_H = 150;
   const MEDIA_IMAGE_MIN_W = 200;
