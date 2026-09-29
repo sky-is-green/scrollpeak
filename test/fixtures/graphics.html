@@ -25,6 +25,22 @@
      landed together at x = -138 over the article's own text. */
   .sticky-note { position: sticky; top: 0; padding: 2px 4px;
                  background: #e74c3c; color: #fff; }
+
+  /* Not displayed. getClientRects() still returns a rect for both of these,
+     unlike display:none, so they were mapped -- Wikipedia hides its collapsed
+     menus and unpinned sidebars this way and the page tools landed on top of
+     the infobox. */
+  .hidden-note { visibility: hidden; }
+  .faded-note { opacity: 0; }
+
+  /* A background that comes from the element's *place* in the document, not
+     from the element. A clone keeps the classes but not the position, so the
+     colour has to be carried across as a computed value -- Wikipedia colours
+     its version rows like this, and the preview showed five identical white
+     rows where the page has green, amber and red ones. */
+  .bgtable { border-collapse: collapse; }
+  .bgtable td { width: 120px; height: 22px; border: 1px solid #999; }
+  .bgtable tr:first-child td:first-child { background: #d4f4b4; }
   .fixed-note { position: fixed; top: 4px; right: 4px; padding: 2px 4px;
                 background: #8e44ad; color: #fff; }
 
@@ -78,8 +94,13 @@ its text.</p>
   <span class="bgimg" data-id="bg-img"></span>
   <span class="bgimg-labelled" data-id="bg-text">LABEL-IN-BG</span>
   <span class="bg-pseudo" data-id="bg-pseudo"></span>
-  <div class="sticky-note">STICKY-MUST-NOT-APPEAR</div>
-  <div class="fixed-note">FIXED-MUST-NOT-APPEAR</div>
+  <div class="sticky-note" data-id="sticky-note">STICKY-MUST-NOT-APPEAR</div>
+  <div class="fixed-note" data-id="fixed-note">FIXED-MUST-NOT-APPEAR</div>
+  <div class="hidden-note" data-id="hidden-note">HIDDEN-MUST-NOT-APPEAR</div>
+  <div class="faded-note" data-id="faded-note">FADED-MUST-NOT-APPEAR</div>
+  <table class="bgtable"><tr>
+    <td data-id="bg-cell">CELL</td><td>PLAIN</td>
+  </tr></table>
   <span>red bar, 120x24, from background-image</span>
 </div>
 

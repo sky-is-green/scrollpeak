@@ -250,6 +250,20 @@
 
       stripText(node);
 
+      // The element's computed background, so a clone keeps the colour the
+      // page painted even when the rule that painted it matched the element's
+      // position in the document rather than the element. See collectBoxes().
+      const paint = box.paint;
+      if (paint) {
+        if (paint.bg) node.style.backgroundColor = paint.bg;
+        if (paint.image) {
+          node.style.backgroundImage = paint.image;
+          node.style.backgroundSize = paint.size;
+          node.style.backgroundPosition = paint.position;
+          node.style.backgroundRepeat = paint.repeat;
+        }
+      }
+
       place(node, (box.x - left) * SCALE, (box.y - centre) * SCALE, w, h);
       return node;
     }

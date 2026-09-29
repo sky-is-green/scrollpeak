@@ -267,12 +267,30 @@
         if (this.#isStuck(el)) return;
         seen.add(el);
 
+        // The background as *computed*, carried onto the clone.
+        //
+        // A clone keeps the element's classes, which is enough for a rule that
+        // matches the element itself -- but not for one that matches its place
+        // in the document. Wikipedia colours its version rows with a rule on the
+        // row, so a <td> cloned out of its table has no colour at all: the
+        // preview showed five identical white rows where the page has green,
+        // amber and red ones. Reading the computed value sidesteps the question
+        // of which selector produced it.
+        const cs = getComputedStyle(el);
+        const paint = {
+          bg: isPainted(cs.backgroundColor) ? cs.backgroundColor : null,
+          image: cs.backgroundImage !== "none" ? cs.backgroundImage : null,
+          size: cs.backgroundSize,
+          position: cs.backgroundPosition,
+          repeat: cs.backgroundRepeat,
+        };
+
         const rects = Array.from(el.getClientRects()).filter(
           (r) => r.width > 0.5 && r.height > 0.5,
         );
         for (const rect of rects) {
           if (rect.width < 1 || rect.height < 1) continue;
-          found.push(makeBox(el, rect, scrollX, scrollY));
+          found.push(makeBox(el, rect, scrollX, scrollY, paint));
         }
       };
 
@@ -284,15 +302,30 @@
         consider(el);
       }
 
-      // Background images. The page's own background is excluded: the preview
-      // already paints the page background, and html/body would otherwise
-      // cover the whole region.
+      // Backgrounds: images and colours.
+      //
+      // Kate has neither. His preview draws text on the editor background, and
+      // for a text editor that is the whole of it. On a web page a background
+      // carries meaning a text-only preview throws away -- on Wikipedia's
+      // version history table the row colour is what says which release is
+      // current, and the preview showed five identical rows of black text.
+      //
+      // The page's own background is excluded: html/body would otherwise cover
+      // the whole region, and the preview already paints the page's background
+      // behind everything. Anything as large as the viewport in both axes is
+      // the same thing in a wrapper, so it goes too; a page-level wrapper's
+      // colour is the page background under another name.
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
       for (const el of root.querySelectorAll("*")) {
         if (found.length >= MAX_BOXES) break;
         if (el === document.body || el === document.documentElement) continue;
         if (seen.has(el)) continue;
         const cs = getComputedStyle(el);
-        if (!cs.backgroundImage || cs.backgroundImage === "none") continue;
+        const hasImage = cs.backgroundImage && cs.backgroundImage !== "none";
+        if (!hasImage && !isPainted(cs.backgroundColor)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width >= vw && r.height >= vh) continue;
         consider(el);
       }
 
@@ -319,35 +352,66 @@
     }
 
     /**
-     * Is this element out of the document's flow?
+     * Is this element not actually on screen, or not in the document's flow?
      *
-     * `position: fixed` and `position: sticky` both report a viewport-relative
-     * rect: fixed content does not scroll at all, and sticky content is
-     * reported where it is stuck rather than where it would flow. We convert
-     * rects to document coordinates by adding scrollY, so for either of them
-     * the result is a document position that is simply wrong -- and on a real
-     * site they pile up at that wrong position rather than spreading out.
+     * Two different reasons, one walk, because both mean "we cannot say where
+     * this belongs":
      *
-     * Wikipedia's sticky header, page tools and table-of-contents toggle do
-     * exactly this: "Features", "History", "Learn to edit", "What links here"
-     * and "Toggle Platform availability" all landed in the preview at
-     * x = -138, over the article's own text. That is the overlapping text in
-     * the report. Kate's minimap has no analogue of any of this, because a
-     * text editor's document contains no fixed UI.
+     * **Out of flow.** `position: fixed` and `position: sticky` report a
+     * viewport-relative rect: fixed content does not scroll at all, and sticky
+     * content is reported where it is stuck rather than where it would flow. We
+     * convert rects to document coordinates by adding scrollY, so for either of
+     * them the result is wrong -- and rather than spreading out, they pile up at
+     * that wrong position.
      *
-     * So they are left out: their document position is unknowable from here,
-     * and a wrong position is worse than no position.
+     * **Not displayed.** `getClientRects()` still returns a rect for content
+     * hidden with `visibility: hidden` or `opacity: 0`, unlike `display: none`.
+     * Wikipedia hides its collapsed menus and its unpinned sidebars that way,
+     * so the page tools -- "Printable version", "In other projects",
+     * "Wikidata item", "Wikimedia Commons" -- were mapped from inside a
+     * collapsed dropdown and landed on top of the infobox. Measured on the
+     * page: `.vector-dropdown-content` is `display:block`, `visibility:hidden`,
+     * `opacity:0`, and reports one rect.
+     *
+     * `visibility` is inherited and can be overridden back to `visible` by a
+     * descendant, so the element's own computed value is the authoritative
+     * answer for it and #styleFor() checks that directly. `opacity` and
+     * `content-visibility` are not inherited, so they are checked here.
+     *
+     * Kate's minimap has no analogue of any of this, because a text editor's
+     * document contains no fixed, hidden or collapsed UI.
      */
     #isStuck(el) {
+      const chain = [];
+      let result = false;
       for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
         const hit = STUCK.get(n);
-        if (hit !== undefined) return hit;
-        const pos = getComputedStyle(n).position;
-        const stuck = pos === "fixed" || pos === "sticky";
-        STUCK.set(n, stuck);
-        if (stuck) return true;
+        if (hit !== undefined) {
+          result = hit;
+          break;
+        }
+        chain.push(n);
+        const cs = getComputedStyle(n);
+        const pos = cs.position;
+        if (
+          pos === "fixed" || pos === "sticky" ||
+          cs.opacity === "0" || cs.contentVisibility === "hidden"
+        ) {
+          result = true;
+          break;
+        }
       }
-      return false;
+      // Cache the *answer* for every node walked, not "is this node itself out
+      // of flow". The answer is inherited: a node inside a hidden or sticky
+      // container is in the same state, so the whole chain shares it.
+      //
+      // Caching the per-node fact instead -- as this first did -- makes the walk
+      // stop at the first ancestor a previous call happened to visit and return
+      // that ancestor's false without ever reaching the hidden container above
+      // it. That is exactly what happened: the collapsed menus were still
+      // mapped, at their stuck viewport position.
+      for (const n of chain) STUCK.set(n, result);
+      return result;
     }
 
     /**
@@ -481,7 +545,11 @@
       if (hit !== undefined) return hit;
 
       const cs = getComputedStyle(parent);
-      if (cs.display === "none" || this.#isStuck(parent)) {
+      if (
+        cs.display === "none" ||
+        cs.visibility === "hidden" || cs.visibility === "collapse" ||
+        this.#isStuck(parent)
+      ) {
         cache.set(parent, null);
         return null;
       }
@@ -828,7 +896,7 @@
    * white-space: pre* values keep their source text, so there the raw slice
    * already is the rendered text.
    */
-  function makeBox(el, rect, scrollX, scrollY) {
+  function makeBox(el, rect, scrollX, scrollY, paint) {
     return {
       el,
       x: rect.left + scrollX,
@@ -836,11 +904,36 @@
       width: rect.width,
       height: rect.height,
       kind: el.tagName,
+      paint,
     };
   }
 
   function clamp(v, min, max) {
     return Math.min(max, Math.max(min, v));
+  }
+
+  /**
+   * Does this computed background colour actually paint anything?
+   *
+   * A fully transparent background is what an unstyled element reports, and
+   * cloning one would cost a node to draw nothing. A *semi*-transparent one
+   * does paint, and is kept: a table row at 20% green is a table row that
+   * means something.
+   */
+  function isPainted(color) {
+    const text = (color || "").trim();
+    if (!text || text === "transparent") return false;
+    if (!parseRgb(text)) return false;
+    const alpha = /^rgba?\([^)]*?,\s*([\d.]+)\s*\)$/.exec(text);
+    if (alpha) return Number(alpha[1]) > 0;
+    const slash = /\/\s*([\d.]+%?)\s*\)$/.exec(text);
+    if (slash) {
+      const v = slash[1].endsWith("%")
+        ? parseFloat(slash[1]) / 100
+        : parseFloat(slash[1]);
+      return v > 0;
+    }
+    return true;
   }
 
   /** 5th-percentile x, so a single far-left outlier cannot shift the column. */
