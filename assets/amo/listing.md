@@ -84,7 +84,8 @@ minimap, scrollbar, scroll bar, overview, navigation, long documents
 The submitted ZIP is the extension's unminified source with `manifest.json` at
 its root; nothing is minified, concatenated or generated. The only vendored
 file is `src/vendor/vugluscr.standalone.js`, an unminified rollup bundle of
-vugluscr 2.0.0 (MIT), shipped with its LICENSE and NOTICE unchanged.
+vugluscr 2.0.0 (MIT; upstream source: https://github.com/jurijsk/vugluscr),
+shipped with its LICENSE and NOTICE unchanged.
 
 **Exact reproduction (no build step).** To create a byte-identical copy of the
 submitted package:
