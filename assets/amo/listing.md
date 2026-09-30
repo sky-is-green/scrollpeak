@@ -10,11 +10,15 @@ ScrollPeak
 
 ## Summary
 
-*(This is the manifest `description`; Firefox uses it in the Extensions panel
-and AMO reuses it. One sentence.)*
+*(AMO's Summary field takes up to 250 characters, so it can carry more than
+the manifest `description` — keep that one-liner short for Firefox's
+Extensions panel, and use the text below, 247 characters, in the AMO form.
+Everything essential is inside the first 250.)*
 
-A scrollbar minimap. Hover the scrollbar to see the whole page, magnify a
-section, click to jump.
+A scrollbar minimap for Firefox, ported from Kate, the KDE text editor. Hover
+the scrollbar to see the whole page, preview any section under the cursor,
+and click to jump or drag to scroll. Rendered locally, in the page's own
+colours, on any site.
 
 ## Description
 
