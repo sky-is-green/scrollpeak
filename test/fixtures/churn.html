@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Churn</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 0 auto; padding: 16px; }
+</style>
+</head>
+<body>
+<h1>A page that mutates constantly</h1>
+<p id="intro">A timer rewrites a block several times a second. The map's update
+budget has to hold: a rebuild per mutation is what the policy exists to
+prevent.</p>
+<div id="noise" style="border: 1px solid #ccc; padding: 12px">noise</div>
+<p>Filler 1.</p><p>Filler 2.</p><p>Filler 3.</p><p>Filler 4.</p>
+<p>Filler 5.</p><p>Filler 6.</p><p>Filler 7.</p><p>Filler 8.</p>
+<p>Filler 9.</p><p>Filler 10.</p><p>Filler 11.</p><p>Filler 12.</p>
+<p>Filler 13.</p><p>Filler 14.</p><p>Filler 15.</p><p>Filler 16.</p>
+<script>
+  let i = 0;
+  setInterval(() => {
+    i++;
+    document.getElementById("noise").textContent =
+      "noise " + i + " " + "changing text ".repeat(6);
+  }, 250);
+</script>
+</body>
+</html>

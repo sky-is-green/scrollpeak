@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Late content</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 0 auto; padding: 16px; }
+</style>
+</head>
+<body>
+<h1>Content that arrives late</h1>
+<p id="intro">The block below is empty until a timer fills it, the way a
+lazily-loaded section behaves. The map's base is a snapshot, so the update has
+to come from the freshness policy.</p>
+<div id="late" style="border: 1px dashed #aaa; padding: 12px; min-height: 40px">
+  Loading&hellip;
+</div>
+<p>Filler 1.</p><p>Filler 2.</p><p>Filler 3.</p><p>Filler 4.</p>
+<p>Filler 5.</p><p>Filler 6.</p><p>Filler 7.</p><p>Filler 8.</p>
+<p>Filler 9.</p><p>Filler 10.</p><p>Filler 11.</p><p>Filler 12.</p>
+<p>Filler 13.</p><p>Filler 14.</p><p>Filler 15.</p><p>Filler 16.</p>
+<script>
+  setTimeout(() => {
+    document.getElementById("late").textContent =
+      "Late content has arrived " + "and it is long enough to read ".repeat(3);
+  }, 700);
+</script>
+</body>
+</html>

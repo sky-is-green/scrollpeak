@@ -27,7 +27,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness import SRC, fixture_server, launch_firefox, stop_firefox  # noqa: E402
+from harness import SRC, fixture_server, launch_firefox, stop_firefox, variant  # noqa: E402
 
 PAGE = "/graphics.html"
 # The label each graphic's row carries, for the "drawn exactly once" check.
@@ -139,7 +139,8 @@ def main():
     with fixture_server() as server:
         # Overridable so a deliberate bug can be reinstated in a copy of src/
         # and this same test run against it.
-        proc, m = launch_firefox(sys.argv[1] if len(sys.argv) > 1 else SRC)
+        proc, m = launch_firefox(
+            sys.argv[1] if len(sys.argv) > 1 else variant({"mapMode": "raster"}))
         try:
             m.cmd("WebDriver:Navigate", {"url": server.fixtures + PAGE})
             time.sleep(4)

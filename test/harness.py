@@ -9,6 +9,7 @@ import functools
 import http.server
 import json
 import os
+import re
 import shutil
 import socket
 import socketserver
@@ -99,6 +100,32 @@ class Marionette:
                 if len(m) > 2 and m[2]:
                     raise RuntimeError(f"{name}: {m[2]}")
                 return m[3] if len(m) > 3 else None
+
+
+def variant(patch, base=None):
+    """A copy of src/ with different DEFAULT_SETTINGS values.
+
+    Defaults live in one place -- DEFAULT_SETTINGS in background.js -- which is
+    what makes them safe to patch for a test: a suite that pins the raster
+    renderer installs this instead of the shipped default, so both map bases
+    are exercised. Same idea as test_settings.variant().
+    """
+    tmp = tempfile.mkdtemp(prefix="scrollpeak-variant-")
+    dst = os.path.join(tmp, "ext")
+    shutil.copytree(base or SRC, dst)
+    path = os.path.join(dst, "background.js")
+    text = open(path).read()
+    for key, value in patch.items():
+        text, n = re.subn(
+            rf"(\n  {key}: )[^,\n]+,",
+            lambda m: m.group(1) + json.dumps(value) + ",",
+            text,
+            count=1,
+        )
+        if n != 1:
+            raise SystemExit(f"could not patch default for {key}")
+    open(path, "w").write(text)
+    return dst
 
 
 def free_port():

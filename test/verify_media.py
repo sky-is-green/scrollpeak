@@ -19,7 +19,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness import SRC, fixture_server, launch_firefox, stop_firefox  # noqa: E402
+from harness import SRC, fixture_server, launch_firefox, stop_firefox, variant  # noqa: E402
 
 MEDIA = "/media.html"        # a 480x270 player and four pictures: blocks
 GALLERY = "/gallery.html"    # sixteen large pictures, no video: blocks
@@ -100,7 +100,7 @@ def main():
         if not cond:
             failures.append(name)
 
-    ext = sys.argv[1] if len(sys.argv) > 1 else SRC
+    ext = sys.argv[1] if len(sys.argv) > 1 else variant({"mapMode": "raster"})
 
     with fixture_server() as server:
         proc, m = launch_firefox(ext)

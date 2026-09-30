@@ -25,7 +25,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import (  # noqa: E402
-    ARTICLE, SRC, fixture_server, launch_firefox, stop_firefox,
+    ARTICLE, SRC, fixture_server, launch_firefox, stop_firefox, variant,
 )
 
 ORACLE = r"""
@@ -99,7 +99,8 @@ done(out);
 
 def main():
     with fixture_server() as server:
-      proc, m = launch_firefox(SRC)
+      proc, m = launch_firefox(
+          sys.argv[1] if len(sys.argv) > 1 else variant({"mapMode": "raster"}))
       try:
         m.cmd("WebDriver:Navigate", {"url": server.fixtures + ARTICLE})
         time.sleep(4)

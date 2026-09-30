@@ -44,6 +44,14 @@ out.active = document.documentElement.classList.contains("vugluscr_active");
 const map = q(".scrollpeak-map");
 out.map = !!map;
 out.mode = map ? map.dataset.mode : null;
+const thumb = q(".scrollpeak-thumb");
+out.thumb = !!thumb;
+const tf = q(".scrollpeak-thumb__frame");
+out.thumbNodes = null;
+if (tf && tf.contentDocument) {
+  const w = tf.contentDocument.querySelector(".scrollpeak-thumb__page");
+  out.thumbNodes = w ? w.querySelectorAll("*").length : null;
+}
 if (map) {
   let painted = 0; const colors = new Set();
   try {
@@ -96,11 +104,13 @@ def main():
                 ok = not d.get("rail") and not d.get("active")
                 detail = f"rail={d.get('rail')} active={d.get('active')}"
             else:
-                ok = (d.get("rail") and d.get("painted", 0) > 500
-                      and not d.get("hOverflow"))
+                ok = (d.get("rail") and not d.get("hOverflow")
+                      and (d.get("painted", 0) > 500
+                           or (d.get("thumbNodes") or 0) > 10))
                 detail = (f"{d.get('ratio')}x  map={d.get('mapWidth')}px "
                           f"painted={d.get('painted')} colours={d.get('colors')} "
-                          f"mode={d.get('mode')} dom={d.get('domNodes')} "
+                          f"mode={d.get('mode')} thumb={d.get('thumbNodes')} "
+                          f"dom={d.get('domNodes')} "
                           f"padR={d.get('bodyPadRight')} hOver={d.get('hOverflow')}")
             mark = "ok " if ok else "BAD"
             print(

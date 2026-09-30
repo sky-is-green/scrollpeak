@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Animated page</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 0 auto; padding: 16px; }
+  #spinner { width: 48px; height: 48px; background: #3b6ea5; border-radius: 8px;
+             animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .card { border: 1px solid #ddd; margin: 12px 0; padding: 12px; }
+  video { width: 320px; height: 180px; background: #222; }
+</style>
+</head>
+<body>
+<h1>An animated page</h1>
+<div id="spinner"></div>
+<p id="intro">The clone must freeze this page: the spinner stays put and the
+video stays paused. Scrolling is what a live clone would repaint on.</p>
+<video id="vid" controls muted loop playsinline autoplay></video>
+
+<h2>Long enough to scroll</h2>
+<p>Paragraph one. The map is a picture of this page, so the fixture only has to
+be a page: text, a picture-sized region, and enough height to scroll.</p>
+<p>Paragraph two. A clone that keeps animating would repaint forever for no
+information, which is exactly what the freeze in clone.js prevents.</p>
+<p>Paragraph three. The rail scales this into the strip; the preview mounts the
+same snapshot at the hovered offset.</p>
+<p>Paragraph four.</p>
+<p>Paragraph five.</p>
+<p>Paragraph six.</p>
+<p>Paragraph seven.</p>
+<p>Paragraph eight.</p>
+<p>Paragraph nine.</p>
+<p>Paragraph ten.</p>
+<p>Paragraph eleven.</p>
+<p>Paragraph twelve.</p>
+<p>Paragraph thirteen.</p>
+<p>Paragraph fourteen.</p>
+<p>Paragraph fifteen.</p>
+<p>Paragraph sixteen.</p>
+<p>Paragraph seventeen.</p>
+<p>Paragraph eighteen.</p>
+<p>Paragraph nineteen.</p>
+<p>Paragraph twenty.</p>
+<p>Paragraph twenty-one.</p>
+<p>Paragraph twenty-two.</p>
+<p>Paragraph twenty-three.</p>
+<p>Paragraph twenty-four.</p>
+<p>Paragraph twenty-five.</p>
+<p>Paragraph twenty-six.</p>
+<p>Paragraph twenty-seven.</p>
+<p>Paragraph twenty-eight.</p>
+<p>Paragraph twenty-nine.</p>
+<p>Paragraph thirty.</p>
+</body>
+</html>

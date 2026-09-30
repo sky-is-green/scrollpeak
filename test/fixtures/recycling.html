@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recycling list</title>
+<style>
+  body { margin: 0; }
+  #spacer { position: relative; height: 40000px; }
+  .row { position: absolute; left: 0; right: 0; height: 40px; box-sizing: border-box;
+         padding: 10px; border-bottom: 1px solid #eee; font: 14px sans-serif; }
+</style>
+</head>
+<body>
+<div id="spacer"></div>
+<script>
+  // A miniature virtual list: fixed row height, a window of rows reused as the
+  // scroll position moves, and a spacer standing in for the whole document.
+  // The document height and the node count never change; only which content is
+  // in the DOM does. A snapshot can never hold the whole thing.
+  const ROWS = 1000, H = 40, WIN = 20;
+  const spacer = document.getElementById("spacer");
+  const rows = [];
+  for (let i = 0; i < WIN; i++) {
+    const d = document.createElement("div");
+    d.className = "row";
+    spacer.appendChild(d);
+    rows.push(d);
+  }
+  function render() {
+    const start = Math.max(0, Math.floor(scrollY / H) - 2);
+    rows.forEach((d, k) => {
+      const i = start + k;
+      d.style.top = (i * H) + "px";
+      d.textContent = "Row " + i + " " + "content ".repeat(6);
+    });
+  }
+  addEventListener("scroll", render, { passive: true });
+  render();
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Growing document</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 0 auto; padding: 16px; }
+</style>
+</head>
+<body>
+<h1>A document that grows as you scroll</h1>
+<p id="intro">An IntersectionObserver sentinel appends blocks when it comes
+into view, the way an infinite-scroll page does. The document height changes,
+so the map has to remap and take a new snapshot.</p>
+<p>Block 1.</p><p>Block 2.</p><p>Block 3.</p><p>Block 4.</p>
+<p>Block 5.</p><p>Block 6.</p><p>Block 7.</p><p>Block 8.</p>
+<p>Block 9.</p><p>Block 10.</p><p>Block 11.</p><p>Block 12.</p>
+<div id="sentinel" style="height: 1px"></div>
+<script>
+  let added = 0;
+  const sentinel = document.getElementById("sentinel");
+  const io = new IntersectionObserver((entries) => {
+    if (added >= 8 || !entries.some((e) => e.isIntersecting)) return;
+    added++;
+    for (let i = 0; i < 5; i++) {
+      const p = document.createElement("p");
+      p.textContent = "Appended block " + added + "." + i + " " +
+        "more text so the band keeps its shape ".repeat(3);
+      document.body.insertBefore(p, sentinel);
+    }
+  });
+  io.observe(sentinel);
+</script>
+</body>
+</html>
