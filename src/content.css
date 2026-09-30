@@ -82,6 +82,33 @@ html.vugluscr_embedded {
   image-rendering: pixelated;
 }
 
+/* ------------------------------------------------------------- the thumb
+ *
+ * The rail's clone thumb: the page's own rendering, scaled into the groove by
+ * thumb.js. It is the map base in clone mode, under the overlay canvas (which
+ * paints the viewport fade and band patches). The strip's hit target is still
+ * vugluscr's <svg>, which sits above both.
+ *
+ * Deliberately no image-rendering: the clone is not a one-pixel-per-character
+ * raster, and letting the browser smooth it is what makes it read as the page.
+ */
+.scrollpeak-thumb {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--sp-strip, #ffffff);
+}
+
+.scrollpeak-thumb__frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
 /* ------------------------------------------------------------- the preview */
 
 .scrollpeak-magnifier {

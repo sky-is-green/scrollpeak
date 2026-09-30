@@ -36,6 +36,11 @@
     console.warn("[ScrollPeak] textmap.js did not load; minimap unavailable");
     return;
   }
+  if (!globalThis.ScrollPeakClone || !globalThis.ScrollPeakThumb ||
+      !globalThis.ScrollPeakFreshness) {
+    console.warn("[ScrollPeak] clone.js/thumb.js/freshness.js did not load; minimap unavailable");
+    return;
+  }
 
   let teardown = null;
   // The live rail, for the messages that update it in place rather than

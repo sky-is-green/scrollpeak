@@ -64,8 +64,10 @@
   const MIN_HEIGHT_PERCENT = 5;
   const MAX_HEIGHT_PERCENT = 60;
 
-  // Kate: m_textPreview->setScaleFactor(0.75)
-  const SCALE = 0.75;
+  // Kate: m_textPreview->setScaleFactor(0.75). Held in clone.js with the rest
+  // of the clone's geometry, because the rail's thumb derives its layout width
+  // from the same number and the two views must agree.
+  const SCALE = globalThis.ScrollPeakClone.SCALE;
 
   // How long the pointer must be still before the clone is rebuilt.
   //
@@ -123,20 +125,14 @@
     let created = false;
     let latestY = 0;
 
-    // The cloned page, and the map revision it was built from. Rebuilt only
-    // when the map is, which is where the page's own changes are picked up.
+    // The mounted clone, and the map revision it was filled from. The frame
+    // itself is created lazily on the first build and then reused; the wrap
+    // inside it is what paint() transforms.
+    let inst = null;
     let page = null;
     let builtAt = -1;
     let buildMs = 0;
     let nodeCount = 0;
-    // The sandboxed same-origin frame the clone lives in, and its windows.
-    // See buildPage() for why it is a frame at all. frameReady is false until
-    // its initial document has finished loading: on Firefox 146 a pending
-    // about:blank navigation replaces anything written before that.
-    let frameEl = null;
-    let frameDoc = null;
-    let frameWin = null;
-    let frameReady = false;
     let settleTimer = null;
 
     // The frame's size and the stage's, measured when they change rather than
@@ -175,286 +171,59 @@
     }
 
     /**
-     * Clone the page.
+     * Mount the current snapshot into the preview's frame.
      *
-     * Expensive -- it is the whole document -- so it happens on the same 300ms
-     * timer that rebuilds the map rather than on every pointer move. Everything
-     * after this is a transform, which is cheap enough to run per frame.
-     *
-     * The clone lives in a sandboxed same-origin iframe, not in this document.
-     * A clone inserted here is live: its custom elements upgrade and their
-     * connectedCallback runs, and a page's own components then re-render
-     * themselves from state the clone does not have. On YouTube that wiped 94%
-     * of the clone (4,650 nodes to 303) and left the preview blank. A frame
-     * has a custom element registry of its own, and no page scripts run in it
-     * to define anything, so the cloned web components stay inert.
-     *
-     * The frame's viewport is set to the page's, so vh units and media queries
-     * resolve as they do on the page, and the page's stylesheets are copied in
-     * because a frame does not inherit the parent's cascade.
+     * The snapshot is built once per revision by the rail's controller and
+     * shared with the thumb (see clone.js), so this never walks the live page,
+     * and the preview cannot disagree with the map. It runs on rail entry and
+     * from the settle timer, never from a pointer move: the transform in
+     * paint() is what follows the pointer.
      */
     function buildPage() {
-      const doc = document.scrollingElement || document.documentElement;
-      // The clone's viewport is the preview's own width, not the page's. This
-      // is what makes the page's responsive CSS do the work: a narrower
-      // viewport reflows the page exactly as the browser would if the window
-      // were that wide, instead of cropping the wide layout. `stageW / SCALE`
-      // is the document width the stage can show, so the frame is sized to
-      // it and nothing is cropped horizontally.
-      const layoutWidth = Math.max(1, Math.round(stageW / SCALE));
-
-      let clone;
-      try {
-        clone = document.body.cloneNode(true);
-      } catch {
+      if (!inst) {
+        inst = globalThis.ScrollPeakClone.createInstance(stage, {
+          frameClass: "scrollpeak-magnifier__frame",
+          pageClass: "scrollpeak-magnifier__page",
+          // The frame's initial document must have loaded before anything is
+          // written to it; on Firefox 146 the pending about:blank navigation
+          // discards early writes. Once it is ready, the first show builds
+          // the clone.
+          onReady: () => { if (visible) show(latestY); },
+        });
+      }
+      const snapshot = ctx.getSnapshot();
+      if (!snapshot) {
+        page = null;
         return false;
       }
 
-      // Our own UI is not part of the page. The rail and the preview would
-      // otherwise be cloned into themselves.
-      for (const el of clone.querySelectorAll(
-        ".vugluscr, .scrollpeak-magnifier, .scrollpeak-map",
-      )) {
-        el.remove();
-      }
-      // And neither is the room the rail reserves. vugluscr sets an inline
-      // `padding-right` on the page's body; left in the clone, the preview is
-      // a rail's width narrower than the page really is, and at preview
-      // widths that can even take a different breakpoint than the same page
-      // rendered clean. Removing the inline value restores whatever the
-      // page's own CSS says.
-      clone.style.removeProperty("padding-right");
-
-      // Ids stay. They used to be stripped, on the theory that a clone
-      // duplicating the page's ids would make the page's own getElementById
-      // start matching the preview -- which cannot happen through a frame,
-      // but the stripping was kept anyway. It is not harmless: a site whose
-      // cascade keys off an id loses those rules in the clone. On Wikipedia
-      // the Vector skin sets `grid-area` with `#content > .vector-body`, and
-      // without it the article body was auto-placed into the wrong grid cell:
-      // the clone's content moved 9,000px down the page, which is what the
-      // preview was showing. Keep every id.
-
-      const t0 = performance.now();
-
-      if (!frameEl) {
-        frameEl = document.createElement("iframe");
-        // allow-same-origin so the parent can reach the clone at all; no
-        // allow-scripts, so nothing in the frame can run. The page's own
-        // scripts are not parser-inserted into it and cannot run either way.
-        frameEl.setAttribute("sandbox", "allow-same-origin");
-        frameEl.className = "scrollpeak-magnifier__frame";
-        frameEl.setAttribute("aria-hidden", "true");
-        // Nothing may be written into the frame until its initial document has
-        // loaded: on Firefox 146 that navigation is still pending when the
-        // element is appended, and it replaces whatever is there when it
-        // finishes. On 156 the write happens to survive; waiting costs
-        // nothing either way, because the first build is 250ms away.
-        frameEl.addEventListener("load", onFrameLoad);
-        stage.appendChild(frameEl);
-        frameDoc = frameEl.contentDocument;
-        frameWin = frameEl.contentWindow;
-      }
-      if (!frameReady) return false;
-      // The frame's viewport width is the preview's, so media queries, `vw`
-      // and percentage layouts resolve the way they would in a window this
-      // size. Its height stays the page's, so `vh` units and full-height
-      // sections keep the shape they have on the page.
-      frameEl.style.width = `${layoutWidth}px`;
-      frameEl.style.height = `${window.innerHeight}px`;
-
-      // Rebuild the frame's document: the page's <html> attributes, its
-      // stylesheets, then the clone.
-      for (const attr of [...frameDoc.documentElement.attributes]) {
-        frameDoc.documentElement.removeAttribute(attr.name);
-      }
-      for (const attr of document.documentElement.attributes) {
-        try {
-          frameDoc.documentElement.setAttribute(attr.name, attr.value);
-        } catch {
-          // An attribute name invalid in another namespace; never in HTML.
-        }
-      }
-      // vugluscr's own class is our chrome too; the clone holds no rail for
-      // it to describe.
-      frameDoc.documentElement.classList.remove("vugluscr_active", "vugluscr_embedded");
-      frameDoc.documentElement.style.overflow = "hidden";
-      const head = frameDoc.head;
-      head.replaceChildren();
-      const base = frameDoc.createElement("base");
-      base.href = location.href;
-      head.appendChild(base);
-      copyStyles(head);
-      frameDoc.body.replaceChildren();
-      frameDoc.body.style.margin = "0";
-
-      const imported = frameDoc.importNode(clone, true);
-      const wrap = frameDoc.createElement("div");
-      wrap.className = "scrollpeak-magnifier__page";
-      // Inline, because content.css is not part of document.styleSheets --
-      // content-script CSS is injected as an agent sheet -- so copyStyles()
-      // never copies the .scrollpeak-magnifier__page rule below into the
-      // frame. Without transform-origin the scale composes about the wrap's
-      // centre instead of its top-left, which moves the clone by
-      // (1 - SCALE) * half the document height: on Wikipedia about 8,900px.
-      // Relative offsets survive (the origin cancels in a difference), which
-      // is why the alignment test did not catch it; absolute placement does
-      // not, which is what a person sees.
-      wrap.style.transformOrigin = "0 0";
-      wrap.style.background = "#fff";
-      // Absolute at the frame's origin, again mirroring the rule that cannot
-      // reach here. The frame's body is subject to the page's own `body`
-      // rules -- the copied cascade styles it as if it were the page's body
-      // -- so a static wrap is pushed by that padding: on article.html, by
-      // its body padding, 16px right and 32px down. The relative-offset test
-      // cancels that constant and passes; the absolute check does not.
-      wrap.style.position = "absolute";
-      wrap.style.left = "0";
-      wrap.style.top = "0";
-      // And a `body > div` rule can still reach the wrap; these keep the box
-      // exactly the geometry the transform assumes.
-      wrap.style.margin = "0";
-      wrap.style.padding = "0";
-      wrap.style.border = "0";
-      wrap.style.display = "block";
-      // The preview's own layout width, so percentage widths, tables and
-      // floats resolve for the viewport the preview actually has.
-      wrap.style.width = `${layoutWidth}px`;
-      wrap.appendChild(imported);
-      frameDoc.body.appendChild(wrap);
-
-      copyState(document.body, imported);
-
-      /**
-       * How tall the clone's own layout is.
-       *
-       * Not `scrollHeight` while the wrap has a height: pages can pin an
-       * absolutely positioned decorative element to the document's exact
-       * bottom (Wikipedia's `.vector-body`), and that pins the clone's
-       * scrollHeight to the page's height, hiding a reflow that is genuinely
-       * shorter. With the wrap at auto height the measurement is the in-flow
-       * content -- absolute boxes whose containing block is the viewport do
-       * not count -- and the wrap is then given the page's height back, so
-       * `height: 100%` inside the clone still has a document to resolve
-       * against.
-       */
-      function measureCloneHeight() {
-        wrap.style.height = "auto";
-        const measured = Math.max(1, wrap.scrollHeight);
-        wrap.style.height = `${Math.max(1, doc.scrollHeight)}px`;
-        return measured;
+      const res = inst.fill(snapshot, {
+        // The clone's viewport is the preview's own width, not the page's.
+        // This is what makes the page's responsive CSS do the work: a
+        // narrower viewport reflows the page exactly as the browser would if
+        // the window were that wide, instead of cropping the wide layout.
+        width: globalThis.ScrollPeakClone.previewWidth(settings),
+        // The rail sweeps viewport-pinned overlays out of the clone and
+        // reports the indices; every later mount reuses them, so a page does
+        // not pay a computed style per element per view.
+        fixedIndices: ctx.getFixedIndices(),
+        onFonts: () => {
+          cloneHeight = inst.measureHeight();
+          if (visible) show(latestY);
+        },
+      });
+      if (!res.ok) {
+        page = null;
+        return false;
       }
 
-      // A viewport-pinned overlay has no document position: it is not anywhere
-      // in the document, it is wherever the viewport is. Left in, a cookie
-      // banner or a sticky toolbar would appear pinned to the top of every
-      // preview of the whole page. Checked after the clone is attached, since
-      // a detached subtree has no computed style to read -- and read through
-      // the frame's window, which is where the clone now lives.
-      for (const el of imported.querySelectorAll("*")) {
-        if (frameWin.getComputedStyle(el).position === "fixed") {
-          el.style.display = "none";
-        }
-      }
-
-      buildMs = Math.round(performance.now() - t0);
-      nodeCount = wrap.querySelectorAll("*").length;
-
-      // The clone's height after its own reflow; see measureCloneHeight().
-      cloneHeight = measureCloneHeight();
-
-      page = wrap;
+      ctx.setFixedIndices(res.fixedIndices);
+      buildMs = res.buildMs;
+      nodeCount = inst.wrap.querySelectorAll("*").length;
+      cloneHeight = res.cloneHeight;
+      page = inst.wrap;
       builtAt = ctx.map.revision;
-
-      // The frame's fonts load asynchronously, so the first layout used the
-      // fallback metrics -- which also means the clone's height was measured
-      // with them. Re-measure and redraw once they are ready.
-      frameDoc.fonts?.ready.then(() => {
-        cloneHeight = measureCloneHeight();
-        if (visible) show(latestY);
-      }).catch(() => {});
-
       return true;
-    }
-
-    /**
-     * The frame's initial document is ready, or a later navigation replaced it.
-     *
-     * The first build usually happens well after this -- Kate's 250ms delay
-     * comes first -- but when it did not, the build was skipped and is run
-     * now. A second load means the frame navigated underneath us, which
-     * replaces the document and the clone with it, so drop the clone and let
-     * the next show rebuild it.
-     */
-    function onFrameLoad() {
-      frameDoc = frameEl.contentDocument;
-      frameWin = frameEl.contentWindow;
-      if (frameReady) page = null;
-      frameReady = true;
-      if (visible) show(latestY);
-    }
-
-    /**
-     * Copy the page's cascade into the frame.
-     *
-     * A frame does not inherit stylesheets, so without this the clone is
-     * unstyled -- and grey boxes where icons were, because `currentColor`
-     * resolves against whatever cascade it lands in. Rules are read through
-     * the CSSOM so they are present synchronously; a cross-origin sheet cannot
-     * be read, so its <link> is re-linked and allowed to load.
-     */
-    function copyStyles(head) {
-      for (const sheet of document.styleSheets) {
-        let text = null;
-        try {
-          text = [...sheet.cssRules].map((rule) => rule.cssText).join("\n");
-        } catch {
-          // Cross-origin: unreadable, and handled by href below.
-        }
-        if (text) {
-          const style = frameDoc.createElement("style");
-          style.textContent = text;
-          head.appendChild(style);
-        } else if (sheet.href) {
-          const link = frameDoc.createElement("link");
-          link.rel = "stylesheet";
-          link.href = sheet.href;
-          head.appendChild(link);
-        }
-      }
-    }
-
-    /**
-     * Copy what cloneNode does not carry.
-     *
-     * The two trees have the same shape, so they can be walked in step. A
-     * cloned <canvas> is blank, and a cloned input shows its markup's value
-     * rather than what the user has typed into it.
-     */
-    function copyState(from, to) {
-      const a = from.querySelectorAll("*");
-      const b = to.querySelectorAll("*");
-      const n = Math.min(a.length, b.length);
-      for (let i = 0; i < n; i++) {
-        const src = a[i];
-        const dst = b[i];
-        const tag = src.tagName;
-        if (tag === "CANVAS") {
-          try {
-            const g = dst.getContext("2d");
-            if (g) g.drawImage(src, 0, 0);
-          } catch {
-            // A cross-origin image drawn into the page's canvas taints it, and
-            // a tainted canvas cannot be read back. The clone keeps its blank
-            // canvas rather than the whole preview failing.
-          }
-        } else if (tag === "INPUT") {
-          if (src.type === "checkbox" || src.type === "radio") dst.checked = src.checked;
-          else dst.value = src.value;
-        } else if (tag === "TEXTAREA" || tag === "SELECT") {
-          dst.value = src.value;
-        }
-      }
     }
 
     /** Rebuild the preview for the document offset under the cursor. */
@@ -653,11 +422,10 @@
         frame = null;
         window.removeEventListener("blur", hide);
         window.removeEventListener("resize", measure);
+        inst?.dispose();
+        inst = null;
         popup.remove();
         page = null;
-        frameEl = null;
-        frameDoc = null;
-        frameWin = null;
       },
     };
   }

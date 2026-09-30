@@ -29,6 +29,9 @@
         "vendor/vugluscr.standalone.js",
         "colour.js",
         "textmap.js",
+        "clone.js",
+        "thumb.js",
+        "freshness.js",
         "rail.js",
         "magnifier.js",
         "content.js"

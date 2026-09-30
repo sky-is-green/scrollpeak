@@ -38,6 +38,13 @@ const DEFAULT_SETTINGS = {
 
   // --- below here: web-specific, no Kate equivalent ---
 
+  // The map base. "clone" is the page's own rendering, scaled into the strip:
+  // whatever the site is, the browser has already laid it out, so no
+  // vocabulary or per-site rule participates. "raster" is Kate's text pixmap,
+  // kept as the fallback while the clone mounts and as the escape hatch.
+  // Not exposed in the options UI; it is a test and recovery switch.
+  mapMode: "clone",
+
   // The strip's background. "" derives a darker shade of the page's own
   // background, which is the closest thing to Kate's behaviour: his minimap
   // sits on the editor background and the marks are the text's own colours.

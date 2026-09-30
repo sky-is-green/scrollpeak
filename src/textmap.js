@@ -181,6 +181,25 @@
       // the thumb itself rather than recomputing its geometry means the two
       // can never disagree.
       this.thumbEl = null;
+      /**
+       * Which surface the strip shows. "raster" is Kate's pixmap. "clone" is
+       * the rail's clone thumb (thumb.js), with this canvas painting band
+       * patches and the viewport fade over it; the pixmap is not built then.
+       */
+      this.renderMode = "raster";
+      /**
+       * Fresh samples of regions the clone base is stale in — content that
+       * arrived or changed without a rebuild. Document coordinates, mapped at
+       * paint time. See addBandPatch().
+       */
+      this.patches = [];
+    }
+
+    setRenderMode(mode) {
+      if (mode !== "clone" && mode !== "raster") return false;
+      if (mode === this.renderMode) return false;
+      this.renderMode = mode;
+      return true;
     }
 
     setThumbEl(el) {
@@ -211,7 +230,7 @@
      * getClientRects() is cheap. Interleaving reads with writes here would
      * cost a reflow per line box.
      */
-    collect(root) {
+    #gatherLines(root, band) {
       const lines = [];
       const styleCache = new Map();
       const scrollY = window.scrollY;
@@ -227,7 +246,9 @@
           if (!parent) return NodeFilter.FILTER_REJECT;
           if (SKIP_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
           // Never map our own UI; it is not part of the page.
-          if (parent.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) {
+          if (parent.closest(
+            ".vugluscr, .scrollpeak-magnifier, .scrollpeak-thumb, .scrollpeak-map",
+          )) {
             return NodeFilter.FILTER_REJECT;
           }
           return NodeFilter.FILTER_ACCEPT;
@@ -235,7 +256,18 @@
       });
 
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const style = this.#styleFor(node.parentElement, styleCache, simpleMode);
+        const parent = node.parentElement;
+        // A band sample is viewport-bounded: skip any subtree that falls
+        // wholly outside it instead of measuring every line box in the
+        // document. That is what makes the freshness updates cheap enough to
+        // run on every settle.
+        if (band) {
+          const pr = parent.getBoundingClientRect();
+          const pTop = pr.top + scrollY;
+          const pBot = pr.bottom + scrollY;
+          if (pBot < band[0] || pTop > band[1]) continue;
+        }
+        const style = this.#styleFor(parent, styleCache, simpleMode);
         if (!style) continue;
 
         const range = document.createRange();
@@ -292,7 +324,13 @@
       );
 
       kept.sort((a, b) => a.y - b.y);
-      this.lines = kept;
+      return { lines: kept, maxY };
+    }
+
+    collect(root) {
+      this.root = root;
+      const { lines, maxY } = this.#gatherLines(root, null);
+      this.lines = lines;
 
       // None, any more. The preview used to be assembled from collected
       // graphics and text runs, and these were the graphics. It is now a clone
@@ -329,6 +367,36 @@
 
       this.revision++;
       return lines;
+    }
+
+    /**
+     * A band of the document, sampled the same way collect() samples the
+     * whole. Bands are keyed by floor(y / step) with step the viewport height;
+     * the signature hashes the same line descriptors bandSignatures() does, so
+     * "the base already has this band" is an equality test.
+     */
+    sampleBand(y0, y1, step) {
+      const lines = this.#gatherLines(this.root || document.body, [y0, y1]).lines
+        .filter((l) => l.y >= y0 && l.y < y1);
+      let h = 2166136261;
+      for (const l of lines) h = hashText(h, lineKey(l));
+      return { key: String(Math.floor(y0 / step)), sig: (h >>> 0).toString(36), lines };
+    }
+
+    /**
+     * Signatures for every band the current collection has content in.
+     *
+     * A band recorded here and still described the same way by the live page
+     * is left alone; one the base is stale in differs, and is patched. That is
+     * the whole staleness test — no site shape, no timestamps.
+     */
+    bandSignatures(step) {
+      const out = new Map();
+      for (const line of this.lines) {
+        const key = String(Math.floor(line.y / step));
+        out.set(key, hashText(out.get(key) || 2166136261, lineKey(line)));
+      }
+      return out;
     }
 
     /** Is the map stretched past the point where the raster reads as text? */
@@ -958,9 +1026,9 @@
 
       // Which renderer drew this map, and for blocks, what it had to work
       // with. Published for the block test and the site probe.
-      let modeKey = "text";
+      let modeKey = this.renderMode === "clone" ? "clone" : "text";
       let counts = null;
-      if (this.blockMode) {
+      if (this.renderMode !== "clone" && this.blockMode) {
         counts = { text: 0, control: 0, link: 0, image: 0 };
         for (const b of this.blocks) counts[b.kind]++;
         modeKey = `blocks:${JSON.stringify(counts)}:` +
@@ -968,7 +1036,9 @@
       }
       if (modeKey !== this._modeKey) {
         this._modeKey = modeKey;
-        this.canvas.dataset.mode = this.blockMode ? "blocks" : "text";
+        this.canvas.dataset.mode = this.renderMode === "clone"
+          ? "clone"
+          : (this.blockMode ? "blocks" : "text");
         if (counts) {
           this.canvas.dataset.blocks = JSON.stringify(counts);
           this.canvas.dataset.blockSpan = JSON.stringify({
@@ -1011,21 +1081,30 @@
       // Kate fills with the editor background, which is the right idea: the
       // marks are text colours, so they need a background their text was
       // chosen against, and a page's is the one its own text was chosen for.
-      ctx.fillStyle = this.mapBackground;
-      ctx.fillRect(0, 0, this.width, grooveHeight);
-
-      // Stretch the pixmap over the whole groove, or, when the map is too
-      // zoomed for the raster to read as text, draw the semantic blocks.
-      if (this.blockMode) {
-        this.#paintBlocks(docTop, docHeight);
+      //
+      // In clone mode the thumb is the map and this canvas is only the
+      // overlay above it, so it must stay transparent where it has nothing
+      // to say.
+      if (this.renderMode === "clone") {
+        ctx.clearRect(0, 0, this.width, grooveHeight);
+        this.#paintPatches(ctx, docTop, docHeight);
       } else {
-        const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
-        if (contentW > 0) {
-          ctx.drawImage(
-            this.pixmap,
-            S_PIXEL_MARGIN, 0, contentW, this.pixmapLineCount,
-            DOC_X_MARGIN, docTop, this.width - DOC_X_MARGIN, docHeight,
-          );
+        ctx.fillStyle = this.mapBackground;
+        ctx.fillRect(0, 0, this.width, grooveHeight);
+
+        // Stretch the pixmap over the whole groove, or, when the map is too
+        // zoomed for the raster to read as text, draw the semantic blocks.
+        if (this.blockMode) {
+          this.#paintBlocks(docTop, docHeight);
+        } else {
+          const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
+          if (contentW > 0) {
+            ctx.drawImage(
+              this.pixmap,
+              S_PIXEL_MARGIN, 0, contentW, this.pixmapLineCount,
+              DOC_X_MARGIN, docTop, this.width - DOC_X_MARGIN, docHeight,
+            );
+          }
         }
       }
 
@@ -1103,6 +1182,59 @@
           // The bar says the page stops being text here; it is part of the
           // rail and hovers like everything else on the strip.
           ctx.fillStyle = ink;
+          ctx.fillRect(x, y, w, h);
+        }
+      }
+    }
+
+    /**
+     * A fresh sample of a document band, in the page's own text colours.
+     *
+     * Used only where the clone base is known to be stale — content that
+     * loaded or changed without a rebuild. The base is the browser's own
+     * rendering; this is a coarse text sketch drawn over one band, never the
+     * map. Replacing by key keeps one patch per band.
+     */
+    addBandPatch(key, lines) {
+      const rects = [];
+      const docW = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+      for (const line of lines) {
+        const rgb = parseRgb(line.color);
+        const colour = rgb
+          ? `rgb(${ensureContrast(rgb, this._mapBackgroundRgb, this.markContrast).join(",")})`
+          : this.palette.ink;
+        rects.push({
+          x: line.x,
+          y: line.y,
+          h: Math.max(1, line.height),
+          // The collected line carries no width; approximate its run from the
+          // character count and size, which is all a 70px strip can show.
+          w: Math.max(3, Math.min(line.text.length, 100) * (line.fontSize || 12) * 0.5),
+          colour,
+        });
+      }
+      this.patches = this.patches.filter((p) => p.key !== key);
+      if (rects.length) this.patches.push({ key, rects });
+      return rects.length;
+    }
+
+    clearPatches() {
+      this.patches = [];
+    }
+
+    /** Draw band patches over the clone, beneath the fade. */
+    #paintPatches(ctx, docTop, docHeight) {
+      if (!this.patches.length) return;
+      const docW = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+      const stripW = Math.max(1, this.width - 2 * DOC_X_MARGIN);
+      for (const patch of this.patches) {
+        for (const p of patch.rects) {
+          const frac = (p.x - this.contentLeft) / docW;
+          const x = DOC_X_MARGIN + Math.max(0, Math.min(1, frac)) * stripW;
+          const w = Math.max(1, (p.w / docW) * stripW);
+          const y = docTop + (p.y / this.docHeight) * docHeight;
+          const h = Math.max(1, (p.h / this.docHeight) * docHeight);
+          ctx.fillStyle = p.colour;
           ctx.fillRect(x, y, w, h);
         }
       }
@@ -1251,6 +1383,19 @@
 
   function renderedText(slice) {
     return slice.replace(/\s+/g, " ").replace(/ +$/, "");
+  }
+
+  /** The descriptor a band's signature hashes; one shape for both callers. */
+  function lineKey(line) {
+    return `${Math.round(line.y)}|${Math.round(line.x)}|${line.text.length}`;
+  }
+
+  function hashText(h, s) {
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h;
   }
 
   globalThis.ScrollPeakTextMap = { TextMap, REBUILD_DELAY_MS, S_PIXEL_MARGIN };

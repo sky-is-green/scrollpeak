@@ -25,6 +25,11 @@
     const content = document.body;
     if (!scroller || !content) return null;
 
+    // Which map base: the page's own rendering (clone) or Kate's raster. The
+    // raster stays as the fallback while the clone mounts, and as the escape
+    // hatch if a page cannot be cloned at all.
+    const mapMode = settings.mapMode === "clone" ? "clone" : "raster";
+
     let rail;
     try {
       rail = new globalThis.Vugluscr.Scrollbar({
@@ -99,8 +104,6 @@
     }
     applyAppearance();
 
-    let rebuildTimer = null;
-
     /**
      * Is the pointer on the rail?
      *
@@ -114,31 +117,124 @@
      */
     let pointerOnRail = false;
 
-    /** Kate's updatePixmap(), behind his 300ms single-shot timer. */
-    function rebuild() {
-      clearTimeout(rebuildTimer);
-      rebuildTimer = setTimeout(() => {
-        if (pointerOnRail) {
-          // Ask again once the pointer has gone; pointerleave also asks.
-          rebuild();
-          return;
-        }
-        const t0 = performance.now();
-        map.collect(content);
-        map.buildPixmap();
-        map.paint(scroller.scrollTop, window.innerHeight);
-        // Worth seeing: collect() walks every text node in the page and is the
-        // only genuinely expensive thing this extension does. In the
-        // content-script console (about:debugging -> Inspect, with "Enable
-        // JavaScript debugging" ticked) this is the first place to look if a
-        // big page feels heavy.
-        console.debug(
-          `[ScrollPeak] ${map.lines.length} lines, ` +
-          `charIncrement=${map.charIncrement} lineIncrement=${map.lineIncrement}, ` +
-          `pixmap ${map.pixmapLineWidth}x${map.pixmapLineCount}, ` +
-          `${(performance.now() - t0).toFixed(1)}ms`,
-        );
-      }, globalThis.ScrollPeakTextMap.REBUILD_DELAY_MS);
+    // Freshness bookkeeping: the base's signature for each band, the document
+    // height the last settle saw, and the policy that schedules the work.
+    let bandSigs = new Map();
+    let lastBandHeight = 0;
+    let policy = null;
+
+    function stepHeight() {
+      return Math.max(1, window.innerHeight);
+    }
+
+    // The clone snapshot the preview (and, in clone mode, the rail thumb)
+    // mounts. It is built from the same collect() as the raster pixmap, so a
+    // revision is a consistent picture of the page, and it is shared between
+    // the views. Built lazily, on demand; the fixed-element indices found by
+    // the first mount are reused by every later one.
+    let snapshot = null;
+    let snapshotRev = -1;
+    let fixedIndices = null;
+    // The rail's clone thumb, when the page is mapped that way. Null in raster
+    // mode, which is the fallback and the escape hatch.
+    let thumb = null;
+
+    function getSnapshot() {
+      if (!snapshot || snapshotRev !== map.revision) {
+        snapshot = globalThis.ScrollPeakClone.snapshotPage();
+        snapshotRev = map.revision;
+        fixedIndices = null;
+      }
+      return snapshot;
+    }
+
+    function buildMap() {
+      const t0 = performance.now();
+      map.collect(content);
+      if (mapMode === "clone") applyThumb();
+      // In clone mode the thumb is the map and there is nothing to rasterise;
+      // the pixmap is built only while the thumb is unavailable (its frame
+      // still loading, or a mount that failed).
+      if (map.renderMode === "raster") map.buildPixmap();
+      map.paint(scroller.scrollTop, window.innerHeight);
+      if (map.renderMode === "clone") {
+        // The base is fresh wherever the live page agrees with it. Record a
+        // signature for every band it holds, so a settle only patches a real
+        // change; clear patches, whose content the new base supersedes.
+        map.clearPatches();
+        bandSigs = map.bandSignatures(stepHeight());
+        lastBandHeight = scroller.scrollHeight;
+      }
+      publishStats();
+      // Worth seeing: collect() walks every text node in the page and is the
+      // only genuinely expensive thing this extension does. In the
+      // content-script console (about:debugging -> Inspect, with "Enable
+      // JavaScript debugging" ticked) this is the first place to look if a
+      // big page feels heavy.
+      console.debug(
+        `[ScrollPeak] ${map.lines.length} lines, mode=${map.renderMode}, ` +
+        `thumb=${thumb ? "yes" : "no"}, ${(performance.now() - t0).toFixed(1)}ms`,
+      );
+    }
+
+    /**
+     * Mount the current snapshot into the rail thumb, and switch the strip to
+     * it. Returns false while the frame is still loading or the page cannot be
+     * cloned, which leaves the raster map in place.
+     */
+    function applyThumb() {
+      if (!thumb) return false;
+      try {
+        const res = thumb.fill(getSnapshot());
+        if (!res.ok) return false;
+        if (res.fixedIndices) fixedIndices = res.fixedIndices;
+        map.setRenderMode("clone");
+        return true;
+      } catch (err) {
+        document.documentElement.dataset.sperr = String(err && err.stack || err);
+        map.setRenderMode("raster");
+        return false;
+      }
+    }
+
+    function rebuild(force = false) {
+      policy?.requestRebuild(force);
+    }
+
+    function publishStats() {
+      if (!policy) return;
+      map.canvas.dataset.engine = JSON.stringify(
+        { ...policy.stats, patches: map.patches.length });
+    }
+
+    /**
+     * One look at the band the viewport is in, at scroll settle.
+     *
+     * The base already holds the band when the live sample hashes the same as
+     * the signature recorded at the last rebuild. When it differs the base is
+     * stale there — content loaded, changed, or was recycled in — and a text
+     * patch is drawn over just that band. Returns what freshness.js needs to
+     * recognise a recycling page.
+     */
+    function bandTick() {
+      if (map.renderMode !== "clone") return { checked: false };
+      const step = stepHeight();
+      const docH = Math.max(1, scroller.scrollHeight);
+      const y0 = Math.floor(scroller.scrollTop / step) * step;
+      const y1 = Math.min(y0 + step, docH);
+      const sample = map.sampleBand(y0, y1, step);
+      const prev = bandSigs.get(sample.key);
+      const changed = prev !== sample.sig;
+      const differed = changed && sample.lines.length > 0;
+      const stable = docH === lastBandHeight;
+      lastBandHeight = docH;
+      if (differed) {
+        bandSigs.set(sample.key, sample.sig);
+        map.addBandPatch(sample.key, sample.lines);
+        repaint();
+      }
+      publishStats();
+      return { checked: true, differed, stable };
     }
 
     /** Kate's cheap per-frame path: no DOM work at all. */
@@ -149,7 +245,10 @@
     function relayout() {
       const h = strip.clientHeight || window.innerHeight;
       applyAppearance();
-      if (map.setSize(settings.minimapWidth, h)) rebuild();
+      // Fitting the clone into the groove is geometry, not content: rescale
+      // without rebuilding.
+      thumb?.setSize();
+      if (map.setSize(settings.minimapWidth, h)) rebuild(true);
     }
 
     rail.onLayout(() => {
@@ -181,7 +280,7 @@
     const onRailLeave = () => {
       pointerOnRail = false;
       // Pick up whatever was deferred while the pointer was here.
-      rebuild();
+      policy?.resume();
     };
     railNode.addEventListener("pointerenter", onRailEnter);
     railNode.addEventListener("pointerleave", onRailLeave);
@@ -190,23 +289,37 @@
     observer.observe(content);
     observer.observe(strip);
 
-    // Pages that mount content lazily, and SPAs that swap their whole
-    // contents, change without resizing and without navigating. A child-list
-    // watch catches both, which a scrollHeight comparison does not: an SPA
-    // route can change every word and keep the same height. Debounced hard,
-    // because sites like GitHub mutate constantly.
-    const mutations = new MutationObserver(() => rebuild());
-    mutations.observe(content, { childList: true, subtree: true });
+    // The update policy. A mutation only raises a flag inside it; the rebuild
+    // happens after the debounce and at scroll settle, never mid-scroll and
+    // never while the pointer is on the rail. On a page that recycles its
+    // content the policy stops scheduling full rebuilds and the rail patches
+    // only the bands the user lands on. See freshness.js.
+    policy = globalThis.ScrollPeakFreshness.create({
+      onRebuild: () => buildMap(),
+      onSettle: () => bandTick(),
+      isHeld: () => pointerOnRail,
+      minInterval: mapMode === "clone" ? 1000 : 0,
+      now: () => performance.now(),
+    });
 
-    // popstate covers back/forward within an SPA.
-    window.addEventListener("popstate", () => rebuild());
+    // The rail's clone thumb. Created here, just before the first build, so
+    // the snapshot it mounts is the one that build produces. Its frame loads
+    // asynchronously: until then the raster map is shown, and onReady fills
+    // the thumb and switches the strip over.
+    if (mapMode === "clone") {
+      thumb = globalThis.ScrollPeakThumb.mount(strip, {
+        settings,
+        getFixedIndices: () => fixedIndices,
+        onReady: () => {
+          if (applyThumb()) repaint();
+        },
+      });
+    }
 
     // First paint. Kate defers this to showEvent; we cannot wait for the
     // strip to be visible, so build it straight away.
     try {
-      map.collect(content);
-      map.buildPixmap();
-      repaint();
+      buildMap();
     } catch (err) {
       document.documentElement.dataset.sperr = String(err && err.stack || err);
       throw err;
@@ -310,6 +423,11 @@
       },
       repaint,
       rebuild,
+      getSnapshot,
+      getFixedIndices: () => fixedIndices,
+      setFixedIndices: (list) => {
+        if (list && list.length) fixedIndices = list;
+      },
 
       /**
        * The browser's theme changed underneath us. Re-derive the colours and
@@ -322,10 +440,12 @@
       },
 
       teardown() {
-        clearTimeout(rebuildTimer);
+        policy?.dispose();
+        policy = null;
         clearTimeout(peekTimer);
+        thumb?.dispose();
+        thumb = null;
         observer.disconnect();
-        mutations.disconnect();
         window.removeEventListener("scroll", onPeekTrigger);
         window.removeEventListener("pointermove", onPeekTrigger);
         window.removeEventListener("wheel", onPeekTrigger);
