@@ -84,8 +84,8 @@ minimap, scrollbar, scroll bar, overview, navigation, long documents
   fitted to the strip; hovering shows the same clone at 0.75.
 - The text raster (`src/textmap.js`) is a port of `KateScrollBar` in Kate's
   `ktexteditor` (upstream: https://invent.kde.org/frameworks/ktexteditor) and
-  remains the fallback when a page cannot be cloned. The tables in the README
-  map each piece of Kate's arithmetic to its port.
+  remains the fallback when a page cannot be cloned. The Kate constants it
+  reproduces are commented at their point of use in `src/textmap.js`.
 - `src/vendor/vugluscr.standalone.js` is an unminified rollup bundle of
   vugluscr 2.0.0 (MIT); the surrounding files are the extension. The vendor's
   NOTICE and LICENSE are in `src/vendor/`.
