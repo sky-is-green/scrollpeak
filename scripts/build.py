@@ -94,6 +94,18 @@ def verify(manifest):
                         "vendored CSS uses @scope, which Firefox shipped in "
                         "146)")
 
+    dcp = gecko.get("data_collection_permissions")
+    if not isinstance(dcp, dict) or not isinstance(dcp.get("required"), list) \
+            or not dcp.get("required"):
+        problems.append(
+            "gecko.data_collection_permissions with a non-empty 'required' "
+            "list is required for new AMO submissions; use [\"none\"] when "
+            "no data is collected "
+            "(https://mzl.la/firefox-builtin-data-consent)")
+    elif "none" in dcp["required"] and len(dcp["required"]) != 1:
+        problems.append("data_collection_permissions: 'none' must be the "
+                        "only entry in the required list")
+
     for ref in referenced_files(manifest):
         if ref.startswith("/") or ".." in ref.split("/"):
             problems.append(f"manifest references {ref!r}, outside src/")

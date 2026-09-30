@@ -77,6 +77,10 @@ minimap, scrollbar, scroll bar, overview, navigation, long documents
 
 ## Notes for reviewers
 
+- The manifest declares
+  `browser_specific_settings.gecko.data_collection_permissions` as
+  `{"required": ["none"]}`; the extension makes no network requests and
+  collects nothing.
 - The map and the hover preview are a clone of the page's own `<body>` in a
   sandboxed same-origin iframe (`src/clone.js`), scaled with CSS transforms.
   Scripts do not run in the frame, and animations and media are paused, so it
