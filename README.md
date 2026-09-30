@@ -42,6 +42,31 @@ Kate caches the pixmap and rebuilds it on a timer; scrolling only repaints.
 That split is preserved, because building the map is the expensive half and
 stretching it is not.
 
+**The map is the page, rendered small.** The base is not an interpretation: a
+snapshot of the page's own `<body>` is mounted in a sandboxed same-origin
+iframe (`src/clone.js`) and scaled into the strip (`src/thumb.js`). The browser
+has already laid the page out, so a photo, a player, a canvas, a table or a
+column layout is shown as what it is, on any site, with no vocabulary of
+elements and no rule per site. The frame runs no scripts, and its animations
+and media are paused, so it is a picture rather than a second live copy. The
+hover preview mounts the same snapshot at 0.75 (`src/magnifier.js`), so the two
+views cannot disagree about what the page says.
+
+**The clone is a snapshot, not a mirror, so freshness is a policy.** A
+`MutationObserver` only raises a flag; a full rebuild is debounced and
+rate-limited, and never runs mid-scroll or while the pointer is on the rail
+(`src/freshness.js`). At scroll settle the rail samples only the band the
+viewport is in, and if that band no longer hashes the same as the base, a text
+patch is drawn over that band instead of rebuilding the world. A page that
+recycles its content — a virtual list, whose DOM never holds the whole document
+— is recognised after a few differing settles and is not fully rebuilt again,
+so the map keeps what the user has seen instead of forgetting it.
+
+**The raster is the fallback.** On a long single-column document the map was,
+and still can be, a raster of the page's text rather than a schematic of its
+elements. It is what the strip shows while the clone is mounting, and it is
+what `mapMode: "raster"` selects; a page that cannot be cloned keeps it.
+
 The one deliberate deviation in Kate's arithmetic is the struck-through line
 in the table. Kate sizes the map's *scrollable* range as
 `min(grooveHeight, pixmapHeight * 2) - 2`,
@@ -52,13 +77,13 @@ the strip — and it leaves the map, the thumb and the preview in three differen
 coordinate systems. The map spans the groove instead; the arithmetic and the
 measurement are at the point of use in `src/textmap.js` (`paint()`).
 
-**On a long document the map is a raster of the page's text, not a schematic
-of its elements.** Kate draws one pixel per character, coloured by that
-character's own attributes, and downsamples by skipping every Nth line and
+**On a long document the raster is a raster of the page's text, not a
+schematic of its elements.** Kate draws one pixel per character, coloured by
+that character's own attributes, and downsamples by skipping every Nth line and
 every Nth character as the document outgrows the strip. A page gives us the
 colouring for free — Kate pays for syntax highlighting explicitly, whereas a
 page's computed styles already separate headings, links, body copy,
-quotations and code.
+quotations and code. This is the fallback path; the clone is the default.
 
 `src/textmap.js` does this on a canvas.
 
@@ -78,7 +103,7 @@ characters are sliced onto it. Whitespace that is genuinely significant
 value rather than guessed.
 
 **A page that is not one column of text stops being a raster.** Three things
-switch the map to semantic blocks. One is zoom: below one text line per 4px of
+switch the fallback to semantic blocks. One is zoom: below one text line per 4px of
 groove — short articles, site stubs, the settings page — each line is stretched
 into a band of blobs and the characters stop being characters. The second is
 shape: when the text is spread over more than 0.75 of the viewport's width (a
@@ -105,7 +130,7 @@ reads as text, nothing about it changes.
 
 `test/fixtures/expected-map.png` is the real output, magnified 6×.
 
-**A page that is mostly pictures gets that block map, not the browser's
+**A page that is mostly pictures got that block map, not the browser's
 scrollbar.** An earlier version gave those pages up: the rail did not mount and
 the native scrollbar stayed. Measured on live pages — eBay's search, Amazon's
 list, Reddit's front, YouTube's watch page — the block map reads as the page,

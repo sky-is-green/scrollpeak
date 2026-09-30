@@ -35,13 +35,12 @@ you where the rest of the page is before you go there.
 - **Click** to jump there. **Drag** to scroll continuously.
 - **Peek** parks the rail off-screen until you approach it.
 - **Minimap only** drops the track and keeps the map.
-- On short or multi-column pages the map turns into a block diagram — links in
-  their own colour, pictures as outlines, form controls as boxes in their
-  browser colours — so it stays clean instead of blurring.
-- On pages that are mostly pictures — a video player, a card grid, a shop's
-  search results — the map keeps the text and draws pictures and players as
-  solid bars, so the page still gets a map rather than the browser's own
-  scrollbar.
+- The map is the page itself, rendered small: the same markup, the same
+  styles, the same layout the browser already made. A photo, a player, a
+  chart, a form, a table of contents — it is shown as what it is, on any site,
+  rather than being guessed at.
+- Pages that cannot be cloned (rare) fall back to Kate's text raster, so the
+  rail is never empty.
 - The map's width, the preview's size, its colours and a per-site exclusion
   list are all settings.
 - The default strip colour follows your Firefox theme.
@@ -78,9 +77,15 @@ minimap, scrollbar, scroll bar, overview, navigation, long documents
 
 ## Notes for reviewers
 
-- The minimap's rendering is a port of `KateScrollBar` in Kate's
-  `ktexteditor` (upstream: https://invent.kde.org/frameworks/ktexteditor).
-  The tables in the README map each piece of Kate's arithmetic to its port.
+- The map and the hover preview are a clone of the page's own `<body>` in a
+  sandboxed same-origin iframe (`src/clone.js`), scaled with CSS transforms.
+  Scripts do not run in the frame, and animations and media are paused, so it
+  is a picture of the page rather than a second live copy. The rail shows it
+  fitted to the strip; hovering shows the same clone at 0.75.
+- The text raster (`src/textmap.js`) is a port of `KateScrollBar` in Kate's
+  `ktexteditor` (upstream: https://invent.kde.org/frameworks/ktexteditor) and
+  remains the fallback when a page cannot be cloned. The tables in the README
+  map each piece of Kate's arithmetic to its port.
 - `src/vendor/vugluscr.standalone.js` is an unminified rollup bundle of
   vugluscr 2.0.0 (MIT); the surrounding files are the extension. The vendor's
   NOTICE and LICENSE are in `src/vendor/`.
