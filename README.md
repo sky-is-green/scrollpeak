@@ -53,14 +53,11 @@ hover preview mounts the same snapshot at 0.75 (`src/magnifier.js`), so the two
 views cannot disagree about what the page says.
 
 **The clone is a snapshot, not a mirror, so freshness is a policy.** A
-`MutationObserver` only raises a flag; a full rebuild is debounced and
-rate-limited, and never runs mid-scroll or while the pointer is on the rail
-(`src/freshness.js`). At scroll settle the rail samples only the band the
-viewport is in, and if that band no longer hashes the same as the base, a text
-patch is drawn over that band instead of rebuilding the world. A page that
-recycles its content — a virtual list, whose DOM never holds the whole document
-— is recognised after a few differing settles and is not fully rebuilt again,
-so the map keeps what the user has seen instead of forgetting it.
+`MutationObserver` only raises a flag; a rebuild is debounced and rate-limited,
+and never runs mid-scroll or while the pointer is on the rail
+(`src/freshness.js`). Anything that changed is picked up by the next rebuild.
+A virtual list, whose DOM never holds the whole document, is mapped from
+whatever window the clone was built at, which is all a snapshot can say.
 
 **The raster is the fallback.** On a long single-column document the map was,
 and still can be, a raster of the page's text rather than a schematic of its
@@ -475,10 +472,9 @@ Known limits, in rough priority order:
   cross-origin iframe inside the clone can be blank. A page that cannot be
   cloned falls back to Kate's text raster.
 - **The clone is a snapshot, so freshness is a policy.** A mutation raises a
-  flag; full rebuilds are debounced and rate-limited, and never run mid-scroll
-  or while the pointer is on the rail. At scroll settle only the band the
-  viewport is in is re-sampled, and a page that recycles its content — a
-  virtual list — stops being fully rebuilt and keeps the bands already seen.
+  flag; rebuilds are debounced and rate-limited, and never run mid-scroll or
+  while the pointer is on the rail. A virtual list — whose DOM never holds the
+  whole document — is mapped from the window it was built at.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
   on the first hover of a page load; it is the one rough edge left in frame

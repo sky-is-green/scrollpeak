@@ -103,16 +103,10 @@
       this.thumbEl = null;
       /**
        * Which surface the strip shows. "raster" is Kate's pixmap. "clone" is
-       * the rail's clone thumb (thumb.js), with this canvas painting band
-       * patches and the viewport fade over it; the pixmap is not built then.
+       * the rail's clone thumb (thumb.js), with this canvas painting only the
+       * viewport fade over it; the pixmap is not built then.
        */
       this.renderMode = "raster";
-      /**
-       * Fresh samples of regions the clone base is stale in — content that
-       * arrived or changed without a rebuild. Document coordinates, mapped at
-       * paint time. See addBandPatch().
-       */
-      this.patches = [];
     }
 
     setRenderMode(mode) {
@@ -252,51 +246,12 @@
       const { lines, maxY } = this.#gatherLines(root, null);
       this.lines = lines;
 
-
-      // Kate's preview starts at xStart = 0, so what it shows is the line's
-      // own indentation, not its position on the page. A page's analogue is
-      // the offset from the content's left edge -- without this, a site with
-      // a fixed sidebar pushes every line off to the right of the preview.
-      // A low percentile rather than the minimum, so one stray element does
-      // not shift everything.
-      this.contentLeft = contentLeft(lines);
-
       this.docHeight = maxY;
       this.background = this.pageBackground();
       this.resolveColours();
 
       this.revision++;
       return lines;
-    }
-
-    /**
-     * A band of the document, sampled the same way collect() samples the
-     * whole. Bands are keyed by floor(y / step) with step the viewport height;
-     * the signature hashes the same line descriptors bandSignatures() does, so
-     * "the base already has this band" is an equality test.
-     */
-    sampleBand(y0, y1, step) {
-      const lines = this.#gatherLines(this.root || document.body, [y0, y1]).lines
-        .filter((l) => l.y >= y0 && l.y < y1);
-      let h = 2166136261;
-      for (const l of lines) h = hashText(h, lineKey(l));
-      return { key: String(Math.floor(y0 / step)), sig: (h >>> 0).toString(36), lines };
-    }
-
-    /**
-     * Signatures for every band the current collection has content in.
-     *
-     * A band recorded here and still described the same way by the live page
-     * is left alone; one the base is stale in differs, and is patched. That is
-     * the whole staleness test — no site shape, no timestamps.
-     */
-    bandSignatures(step) {
-      const out = new Map();
-      for (const line of this.lines) {
-        const key = String(Math.floor(line.y / step));
-        out.set(key, hashText(out.get(key) || 2166136261, lineKey(line)));
-      }
-      return out;
     }
 
     /**
@@ -457,10 +412,6 @@
         accent: resolveColor(this.theme?.accent) || null,
         source: this.paletteSource,
       };
-    }
-
-    contentLeftOf() {
-      return this.contentLeft;
     }
 
     /** Cheap upper bound on line count, to pick simple mode before collecting. */
@@ -736,7 +687,6 @@
       // to say.
       if (this.renderMode === "clone") {
         ctx.clearRect(0, 0, this.width, grooveHeight);
-        this.#paintPatches(ctx, docTop, docHeight);
       } else {
         ctx.fillStyle = this.mapBackground;
         ctx.fillRect(0, 0, this.width, grooveHeight);
@@ -768,59 +718,6 @@
       // Kate also draws a delimiter at the bottom of the map, which only has
       // somewhere to go because his map can be shorter than the groove. Ours
       // always reaches the bottom, so there is nothing to delimit.
-    }
-
-    /**
-     * A fresh sample of a document band, in the page's own text colours.
-     *
-     * Used only where the clone base is known to be stale — content that
-     * loaded or changed without a rebuild. The base is the browser's own
-     * rendering; this is a coarse text sketch drawn over one band, never the
-     * map. Replacing by key keeps one patch per band.
-     */
-    addBandPatch(key, lines) {
-      const rects = [];
-      const docW = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
-      for (const line of lines) {
-        const rgb = parseRgb(line.color);
-        const colour = rgb
-          ? `rgb(${ensureContrast(rgb, this._mapBackgroundRgb, this.markContrast).join(",")})`
-          : this.palette.ink;
-        rects.push({
-          x: line.x,
-          y: line.y,
-          h: Math.max(1, line.height),
-          // The collected line carries no width; approximate its run from the
-          // character count and size, which is all a 70px strip can show.
-          w: Math.max(3, Math.min(line.text.length, 100) * (line.fontSize || 12) * 0.5),
-          colour,
-        });
-      }
-      this.patches = this.patches.filter((p) => p.key !== key);
-      if (rects.length) this.patches.push({ key, rects });
-      return rects.length;
-    }
-
-    clearPatches() {
-      this.patches = [];
-    }
-
-    /** Draw band patches over the clone, beneath the fade. */
-    #paintPatches(ctx, docTop, docHeight) {
-      if (!this.patches.length) return;
-      const docW = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
-      const stripW = Math.max(1, this.width - 2 * DOC_X_MARGIN);
-      for (const patch of this.patches) {
-        for (const p of patch.rects) {
-          const frac = (p.x - this.contentLeft) / docW;
-          const x = DOC_X_MARGIN + Math.max(0, Math.min(1, frac)) * stripW;
-          const w = Math.max(1, (p.w / docW) * stripW);
-          const y = docTop + (p.y / this.docHeight) * docHeight;
-          const h = Math.max(1, (p.h / this.docHeight) * docHeight);
-          ctx.fillStyle = p.colour;
-          ctx.fillRect(x, y, w, h);
-        }
-      }
     }
 
     /** The viewport band, taken from the thumb's real position. */
@@ -939,28 +836,8 @@
     return Math.min(max, Math.max(min, v));
   }
 
-  /** 5th-percentile x, so a single far-left outlier cannot shift the column. */
-  function contentLeft(lines) {
-    const xs = lines.map((l) => l.x).sort((a, b) => a - b);
-    if (!xs.length) return 0;
-    return xs[Math.floor(xs.length * 0.05)] || 0;
-  }
-
   function renderedText(slice) {
     return slice.replace(/\s+/g, " ").replace(/ +$/, "");
-  }
-
-  /** The descriptor a band's signature hashes; one shape for both callers. */
-  function lineKey(line) {
-    return `${Math.round(line.y)}|${Math.round(line.x)}|${line.text.length}`;
-  }
-
-  function hashText(h, s) {
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return h;
   }
 
   globalThis.ScrollPeakTextMap = { TextMap, REBUILD_DELAY_MS, S_PIXEL_MARGIN };

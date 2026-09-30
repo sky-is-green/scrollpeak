@@ -3,10 +3,10 @@
 Check that the map keeps up with a page that changes as you scroll.
 
 The clone is a snapshot, so freshness is an event-driven policy rather than a
-live mirror: a mutation raises a flag, scroll settle is when the work happens,
-and a page that recycles its content stops being fully rebuilt and gets band
-patches instead. Four fixtures: growth (infinite scroll), recycling (a virtual
-list), late content, and constant churn.
+live mirror: a mutation raises a flag, a rebuild is debounced and rate-limited,
+and a scroll that ends with work pending is what starts one. Four fixtures:
+growth (infinite scroll), recycling (a virtual list), late content, and
+constant churn.
 
     python3 test/verify_freshness.py
 """
@@ -89,19 +89,23 @@ def main():
             check("no freshness error was recorded", not d1.get("sperr"),
                   str(d1.get("sperr")))
 
-            print("\na recycling list stops being fully rebuilt")
+            print("\na recycling list keeps a map across scrolls")
             go(RECYCLING)
             for i in range(6):
                 scroll((i + 1) * 1700)
                 time.sleep(0.9)
             d = read()
             engine = d.get("engine") or {}
-            check("the settle ran on each scroll",
-                  engine.get("bands", 0) >= 4, json.dumps(engine))
-            check("the page was recognised as recycling",
-                  engine.get("bandOnly") is True, json.dumps(engine))
-            check("and the map still covers the document",
-                  d["mapDocHeight"] > 0, str(d["mapDocHeight"]))
+            check("the map was rebuilt as the window moved",
+                  engine.get("rebuilds", 0) >= 2, json.dumps(engine))
+            check("it is still the clone and holds the current rows",
+                  d.get("mode") == "clone" and "Row " in (d.get("cloneText") or ""),
+                  f"mode={d.get('mode')}")
+            check("the document height is still honest",
+                  abs(d["mapDocHeight"] - d["docHeight"]) <= 40,
+                  f"map={d['mapDocHeight']} page={d['docHeight']}")
+            check("no freshness error was recorded", not d.get("sperr"),
+                  str(d.get("sperr")))
 
             print("\nlate content reaches the clone")
             go(LAZY)

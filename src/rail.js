@@ -77,9 +77,9 @@
 
     // Which surface the strip shows from the first frame. In clone mode the
     // raster is never painted: the thumb is the map and this canvas only
-    // draws the fade and any band patches. A strip that shows the old raster
-    // for the frames the clone takes to mount is exactly the flash the pivot
-    // exists to remove.
+    // draws the viewport fade. A strip that shows the old raster for the
+    // frames the clone takes to mount is exactly the flash the pivot exists
+    // to remove.
     if (mapMode === "clone") map.setRenderMode("clone");
 
     // Strip background and mark contrast. Re-applied wherever the inputs can
@@ -124,15 +124,8 @@
      */
     let pointerOnRail = false;
 
-    // Freshness bookkeeping: the base's signature for each band, the document
-    // height the last settle saw, and the policy that schedules the work.
-    let bandSigs = new Map();
-    let lastBandHeight = 0;
+    // Freshness bookkeeping: the policy that schedules rebuilds.
     let policy = null;
-
-    function stepHeight() {
-      return Math.max(1, window.innerHeight);
-    }
 
     // The clone snapshot the preview (and, in clone mode, the rail thumb)
     // mounts. It is built from the same collect() as the raster pixmap, so a
@@ -166,14 +159,6 @@
       // still loading, or a mount that failed).
       if (map.renderMode === "raster") map.buildPixmap();
       map.paint(scroller.scrollTop, window.innerHeight);
-      if (map.renderMode === "clone") {
-        // The base is fresh wherever the live page agrees with it. Record a
-        // signature for every band it holds, so a settle only patches a real
-        // change; clear patches, whose content the new base supersedes.
-        map.clearPatches();
-        bandSigs = map.bandSignatures(stepHeight());
-        lastBandHeight = scroller.scrollHeight;
-      }
       publishStats();
       // Worth seeing: collect() walks every text node in the page and is the
       // only genuinely expensive thing this extension does. In the
@@ -232,38 +217,7 @@
 
     function publishStats() {
       if (!policy) return;
-      map.canvas.dataset.engine = JSON.stringify(
-        { ...policy.stats, patches: map.patches.length });
-    }
-
-    /**
-     * One look at the band the viewport is in, at scroll settle.
-     *
-     * The base already holds the band when the live sample hashes the same as
-     * the signature recorded at the last rebuild. When it differs the base is
-     * stale there — content loaded, changed, or was recycled in — and a text
-     * patch is drawn over just that band. Returns what freshness.js needs to
-     * recognise a recycling page.
-     */
-    function bandTick() {
-      if (map.renderMode !== "clone") return { checked: false };
-      const step = stepHeight();
-      const docH = Math.max(1, scroller.scrollHeight);
-      const y0 = Math.floor(scroller.scrollTop / step) * step;
-      const y1 = Math.min(y0 + step, docH);
-      const sample = map.sampleBand(y0, y1, step);
-      const prev = bandSigs.get(sample.key);
-      const changed = prev !== sample.sig;
-      const differed = changed && sample.lines.length > 0;
-      const stable = docH === lastBandHeight;
-      lastBandHeight = docH;
-      if (differed) {
-        bandSigs.set(sample.key, sample.sig);
-        map.addBandPatch(sample.key, sample.lines);
-        repaint();
-      }
-      publishStats();
-      return { checked: true, differed, stable };
+      map.canvas.dataset.engine = JSON.stringify(policy.stats);
     }
 
     /** Kate's cheap per-frame path: no DOM work at all. */
@@ -296,7 +250,10 @@
 
     rail.onLayout(() => {
       repaint();
-      relayout();
+      // vugluscr's layout callback runs inside its own resize delivery;
+      // doing our layout-affecting work from there is the other half of the
+      // ResizeObserver loop warning. Defer it with scheduleRelayout().
+      scheduleRelayout();
     });
 
     // Kate connects his timer to the view's scroll updates as well; scrolling
@@ -333,13 +290,10 @@
     observer.observe(strip);
 
     // The update policy. A mutation only raises a flag inside it; the rebuild
-    // happens after the debounce and at scroll settle, never mid-scroll and
-    // never while the pointer is on the rail. On a page that recycles its
-    // content the policy stops scheduling full rebuilds and the rail patches
-    // only the bands the user lands on. See freshness.js.
+    // happens after the debounce or when a scroll settles, never mid-scroll
+    // and never while the pointer is on the rail. See freshness.js.
     policy = globalThis.ScrollPeakFreshness.create({
       onRebuild: () => buildMap(),
-      onSettle: () => bandTick(),
       isHeld: () => pointerOnRail,
       minInterval: mapMode === "clone" ? 1000 : 0,
       now: () => performance.now(),
@@ -460,7 +414,7 @@
       });
     }
     syncRailPadding();
-    rail.onLayout(syncRailPadding);
+    rail.onLayout(schedulePadding);
     new ResizeObserver(schedulePadding).observe(rail.rail.domNode);
     window.addEventListener("scroll", onPeekTrigger, { passive: true });
     window.addEventListener("pointermove", onPeekTrigger, { passive: true });

@@ -71,9 +71,16 @@ STUB = """
   };
 
   window.__errors = [];
-  window.addEventListener("error", (e) => window.__errors.push(String(e.message)));
+  // Firefox reports a ResizeObserver loop as a window error. It is a warning
+  // about a delivery that re-triggered, not an exception: the extension
+  // defers its own layout work to avoid producing one, but a page's observers
+  // can too, so it is not an extension failure.
+  const ignore = (msg) => String(msg).includes("ResizeObserver loop");
+  window.addEventListener("error",
+    (e) => { if (!ignore(e.message)) window.__errors.push(String(e.message)); });
   window.addEventListener("unhandledrejection",
-    (e) => window.__errors.push("unhandledrejection: " + String(e.reason)));
+    (e) => { if (!ignore(e.reason)) {
+      window.__errors.push("unhandledrejection: " + String(e.reason)); } });
 })();
 """
 

@@ -9,7 +9,7 @@
 // page's viewport height, so vh and media queries resolve as on the page) and
 // the wrap inside it carries the scale that fits it into the strip. The frame
 // itself is clipped by the .scrollpeak-thumb container; the overlay canvas
-// sits above it for the viewport fade and band patches.
+// sits above it for the viewport fade.
 
 (function () {
   function mount(strip, opts) {
