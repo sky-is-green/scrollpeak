@@ -102,51 +102,20 @@ characters are sliced onto it. Whitespace that is genuinely significant
 (`<pre>`, `white-space: pre*`) is detected per element from its own computed
 value rather than guessed.
 
-**A page that is not one column of text stops being a raster.** Three things
-switch the fallback to semantic blocks. One is zoom: below one text line per 4px of
-groove — short articles, site stubs, the settings page — each line is stretched
-into a band of blobs and the characters stop being characters. The second is
-shape: when the text is spread over more than 0.75 of the viewport's width (a
-watch page with its recommendation column), the raster has no way to show it,
-because by design it draws every line from the left margin. The third is
-content: a page whose content is pictures — a player, a card grid, a shop's
-search results — is block-shaped however its text falls.
+**The raster is text-only, and it is only a fallback.** Kate's raster assumes
+one column of text: on a page of pictures, or one whose text is spread across
+columns, it draws rows of unrelated fragments. An earlier version switched to a
+small vocabulary of semantic blocks for those pages; the clone base made that
+unnecessary and it is gone. `textmap.js` is now what the strip shows while the
+clone mounts, or on a page that cannot be cloned.
 
-Blocks are deliberately a small vocabulary: text areas filled white or black,
-whichever contrasts with the strip; links in the page's own link colour,
-pushed to contrast the same way the raster's marks are; pictures and players
-as solid bars; form controls as boxes in the browser's own field, face and
-border colours, so a settings page reads as the controls it is made of. A page
-of pictures gets bars because at this size a photo, a chart and a video differ
-only in ways a 70px strip cannot show; inventing a representation for each
-site's design would be a second product, and the map would still be wrong on
-the next site. The bar says what a minimap can honestly say — the page stops
-being text here — and it hovers like every other part of the strip, opening
-the preview on that region. A player that parks its `<video>` outside the
-document (YouTube does) is drawn at its container, which is what the visitor
-is looking at; see `#visibleContainer()`. It is an addition to the port rather
-than a change to it: on a long single-column document, where Kate's raster
-reads as text, nothing about it changes.
+`test/fixtures/expected-map.png` is the real raster output, magnified 6×.
 
-`test/fixtures/expected-map.png` is the real output, magnified 6×.
-
-**A page that is mostly pictures got that block map, not the browser's
-scrollbar.** An earlier version gave those pages up: the rail did not mount and
-the native scrollbar stayed. Measured on live pages — eBay's search, Amazon's
-list, Reddit's front, YouTube's watch page — the block map reads as the page,
-so the rail keeps them, and `isMediaPage()` now only chooses the renderer.
-Which pages count is measured, not taste: a video at least 300×150
-(Wikipedia's 250×141 infobox thumbnail must not qualify), at least twelve
-pictures of 200×100 covering more than a third of the document (Reddit's front
-38 at 56%, BBC's front 43 at 33%; against Wikipedia 9 at 1.4%, GitHub 1 at 2%),
-or five pictures of 120×80 in the first two viewports (measured: eBay 19,
-YouTube 7, Amazon's list 5; Wikipedia 2, GitHub 0). `test/verify_media.py`
-checks each fixture that must read as media, that the rail stays mounted, and
-that a fixed overlay — a lightbox, Wikipedia's media viewer — changes neither:
-only the page's own flow counts. The map chooses its renderer on every rebuild,
-so a player that arrives later (YouTube is an SPA) switches the map to blocks
-rather than taking the rail away, and opening a lightbox on a text page cannot
-flip it.
+**Media-heavy pages keep the rail.** The block renderer existed to keep a page
+of pictures from falling back to the browser's own scrollbar. The clone maps
+them natively, and `test/verify_media.py` pins that a player, a gallery or a
+parked `<video>` keeps the rail, that a player arriving late does not take it
+away, and that a fixed overlay — a lightbox — changes nothing.
 
 **The preview is not a zoom of the map.** Kate's `KateTextPreview` renders the
 *real text* of the hovered region at 0.75 scale — smaller than the editor's own
@@ -455,8 +424,9 @@ python3 test/verify_hover_tracking.py # the preview follows a moving pointer
 python3 test/verify_line_split.py     # line splitting is exact, vs an oracle
 python3 test/verify_graphics.py       # images, SVG, canvas and backgrounds
 python3 test/verify_preview_lines.py  # the preview reproduces the page's lines
-python3 test/verify_blocks.py         # text raster when long, blocks when zoomed
-python3 test/verify_media.py          # media pages get the block map, rail stays
+python3 test/verify_thumb.py          # the map is the page's own rendering
+python3 test/verify_freshness.py      # growth, recycling, late content, churn
+python3 test/verify_media.py          # media pages keep the rail, under the clone
 python3 test/test_appearance.py       # colour, contrast, minimap-only, peek
 python3 test/test_settings.py         # every setting changes something
 python3 test/probe_sites.py           # live sites; edit SITES at the top
@@ -484,10 +454,10 @@ and that clicking scrolls. Exits non-zero on failure.
 
 **Functionally complete; in release clean-up.** The map, the preview,
 click-to-jump, drag, peek, minimap-only, the settings pages and the
-theme-derived colours all work, and all eleven test suites pass. `probe_sites.py`
+theme-derived colours all work, and all twelve test suites pass. `probe_sites.py`
 additionally drives GitHub, Wikipedia, a YouTube watch page, Reddit's front,
 MDN, Hacker News and a 20,254-node W3C spec and reports map scale, painted
-pixels, renderer, console errors and page-layout damage.
+pixels, map mode, console errors and page-layout damage.
 
 The numbers that look like boasts in this README are measurements, checked
 against the page rather than against themselves: the preview reproduces the
@@ -498,29 +468,25 @@ the map leaks no graphics (red = 0, green = 0 in the strip).
 
 Known limits, in rough priority order:
 
-- **The map is a text raster until a page is not one column of text.** On a
-  long single-column document it is built from the page's own line boxes, so
-  images, borders and empty containers carry no marks; that is Kate's model.
-  When the text is stretched too far, spread across columns, or the page's
-  content is pictures, it switches to the semantic blocks described above,
-  where text and links are drawn, pictures and players are bars and controls
-  keep their browser colours. A page's own design — cards, panels, background
-  images — is deliberately not drawn: the map cannot represent every site, so
-  it does not try. A fixed overlay is not the page. A page with heavy grid or
-  flex layout still maps its text where the browser put it, and the preview is
-  unaffected — the preview is the page.
+- **The map is a clone of the page.** One snapshot of the body per revision is
+  mounted in a sandboxed same-origin iframe and scaled into the strip; the
+  browser's own layout means any page shape maps. Shadow DOM is not carried by
+  `cloneNode`, so shadow-heavy sites show empty custom elements, and a
+  cross-origin iframe inside the clone can be blank. A page that cannot be
+  cloned falls back to Kate's text raster.
+- **The clone is a snapshot, so freshness is a policy.** A mutation raises a
+  flag; full rebuilds are debounced and rate-limited, and never run mid-scroll
+  or while the pointer is on the rail. At scroll settle only the band the
+  viewport is in is re-sampled, and a page that recycles its content — a
+  virtual list — stops being fully rebuilt and keeps the bands already seen.
 - **The preview's first clone build is not free** (~130ms for a 13,500-node
   page) and lands on rail arrival. Kate's 250ms first-appearance delay hides it
   on the first hover of a page load; it is the one rough edge left in frame
   pacing. Moving the build to idle time was tried and reverted: it moved the
   cost rather than removing it.
-- **SPA route changes and lazily-mounted content** are caught by a
-  hard-debounced `MutationObserver`, which fires constantly on sites like
-  GitHub. It works, but the debounce is a guess rather than a measurement.
 - **Only the page's own vertical scroll.** vugluscr can drive an inner
   scroller; ScrollPeak does not mount on one.
-- **Untested on Firefox for Android, and on sites that virtualise their
-  content.**
+- **Untested on Firefox for Android.**
 
 The minimum version is **Firefox 146**, and it is not arbitrary. Manifest V3
 host permissions — without which content scripts are never injected — are not

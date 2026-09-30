@@ -18,9 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import SRC, launch_firefox, stop_firefox  # noqa: E402
 
 SITES = [
-    # (label, url, expectation). "native" would mean the page is left to the
-    # browser's own scrollbar; nothing is any more -- media-heavy pages now
-    # get the block renderer, so "rail" is what every page here expects.
+    # (label, url, expectation). Every page here expects the rail now: the map
+    # is a clone of the page's own rendering, so there is no page shape that
+    # has to fall back to the browser's scrollbar.
     ("GitHub (SPA)", "https://github.com/mozilla/firefox", "rail"),
     ("Wikipedia", "https://en.wikipedia.org/wiki/Firefox", "rail"),
     ("YouTube watch (media)", "https://www.youtube.com/watch?v=jNQXAC9IVRw", "rail"),

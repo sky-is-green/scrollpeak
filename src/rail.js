@@ -75,6 +75,13 @@
     // never show the viewport in two different places.
     map.setThumbEl(minimap.thumb?.domNode ?? null);
 
+    // Which surface the strip shows from the first frame. In clone mode the
+    // raster is never painted: the thumb is the map and this canvas only
+    // draws the fade and any band patches. A strip that shows the old raster
+    // for the frames the clone takes to mount is exactly the flash the pivot
+    // exists to remove.
+    if (mapMode === "clone") map.setRenderMode("clone");
+
     // Strip background and mark contrast. Re-applied wherever the inputs can
     // have moved: a relayout, and every collect(), because a page's background
     // can change under a dark-mode media query and the default is derived
@@ -138,6 +145,8 @@
     // The rail's clone thumb, when the page is mapped that way. Null in raster
     // mode, which is the fallback and the escape hatch.
     let thumb = null;
+    let thumbLive = false;
+    let cloneWatchdog = null;
 
     function getSnapshot() {
       if (!snapshot || snapshotRev !== map.revision) {
@@ -179,8 +188,9 @@
 
     /**
      * Mount the current snapshot into the rail thumb, and switch the strip to
-     * it. Returns false while the frame is still loading or the page cannot be
-     * cloned, which leaves the raster map in place.
+     * it. Returns false while the frame is still loading, which just leaves
+     * the (still empty) clone surface up; the watchdog in mount() falls back
+     * to the raster if the frame never arrives.
      */
     function applyThumb() {
       if (!thumb) return false;
@@ -188,13 +198,32 @@
         const res = thumb.fill(getSnapshot());
         if (!res.ok) return false;
         if (res.fixedIndices) fixedIndices = res.fixedIndices;
+        thumbLive = true;
+        clearTimeout(cloneWatchdog);
+        cloneWatchdog = null;
         map.setRenderMode("clone");
         return true;
       } catch (err) {
-        document.documentElement.dataset.sperr = String(err && err.stack || err);
-        map.setRenderMode("raster");
+        fallbackToRaster(err);
         return false;
       }
+    }
+
+    /**
+     * The clone could not be mounted (a page it cannot clone, a frame that
+     * never loaded). Show Kate's text raster instead, and say so where a probe
+     * will find it.
+     */
+    function fallbackToRaster(reason) {
+      if (map.renderMode === "raster") return;
+      document.documentElement.dataset.sperr = String(reason && reason.stack || reason);
+      map.setRenderMode("raster");
+      try {
+        map.buildPixmap();
+      } catch {
+        // Nothing to draw; the strip stays as it is.
+      }
+      repaint();
     }
 
     function rebuild(force = false) {
@@ -242,6 +271,20 @@
       map.paint(scroller.scrollTop, window.innerHeight);
     }
 
+    // A ResizeObserver callback runs as part of the layout it is observing, so
+    // resizing the canvas or writing the reserved padding from inside one is
+    // what makes Firefox report "ResizeObserver loop completed with
+    // undelivered notifications" — a passing warning that tests treating page
+    // errors as failures will catch. Defer to the next frame, coalesced.
+    let relayoutFrame = null;
+    function scheduleRelayout() {
+      if (relayoutFrame !== null) return;
+      relayoutFrame = requestAnimationFrame(() => {
+        relayoutFrame = null;
+        relayout();
+      });
+    }
+
     function relayout() {
       const h = strip.clientHeight || window.innerHeight;
       applyAppearance();
@@ -285,7 +328,7 @@
     railNode.addEventListener("pointerenter", onRailEnter);
     railNode.addEventListener("pointerleave", onRailLeave);
 
-    const observer = new ResizeObserver(relayout);
+    const observer = new ResizeObserver(scheduleRelayout);
     observer.observe(content);
     observer.observe(strip);
 
@@ -304,8 +347,9 @@
 
     // The rail's clone thumb. Created here, just before the first build, so
     // the snapshot it mounts is the one that build produces. Its frame loads
-    // asynchronously: until then the raster map is shown, and onReady fills
-    // the thumb and switches the strip over.
+    // asynchronously; onReady fills it. Until then the strip shows only its
+    // own background, never the old raster, and if the frame never arrives
+    // the watchdog falls back to Kate's raster rather than leaving it blank.
     if (mapMode === "clone") {
       thumb = globalThis.ScrollPeakThumb.mount(strip, {
         settings,
@@ -314,6 +358,10 @@
           if (applyThumb()) repaint();
         },
       });
+      cloneWatchdog = setTimeout(() => {
+        cloneWatchdog = null;
+        if (!thumbLive) fallbackToRaster("the clone never mounted");
+      }, 3000);
     }
 
     // First paint. Kate defers this to showEvent; we cannot wait for the
@@ -403,9 +451,17 @@
       const width = rail.rail.domNode.getBoundingClientRect().width;
       if (width > 0) content.style.paddingRight = `${Math.round(width)}px`;
     }
+    let paddingFrame = null;
+    function schedulePadding() {
+      if (paddingFrame !== null) return;
+      paddingFrame = requestAnimationFrame(() => {
+        paddingFrame = null;
+        syncRailPadding();
+      });
+    }
     syncRailPadding();
     rail.onLayout(syncRailPadding);
-    new ResizeObserver(syncRailPadding).observe(rail.rail.domNode);
+    new ResizeObserver(schedulePadding).observe(rail.rail.domNode);
     window.addEventListener("scroll", onPeekTrigger, { passive: true });
     window.addEventListener("pointermove", onPeekTrigger, { passive: true });
     window.addEventListener("wheel", onPeekTrigger, { passive: true });
@@ -442,6 +498,12 @@
       teardown() {
         policy?.dispose();
         policy = null;
+        clearTimeout(cloneWatchdog);
+        cloneWatchdog = null;
+        if (relayoutFrame !== null) cancelAnimationFrame(relayoutFrame);
+        relayoutFrame = null;
+        if (paddingFrame !== null) cancelAnimationFrame(paddingFrame);
+        paddingFrame = null;
         clearTimeout(peekTimer);
         thumb?.dispose();
         thumb = null;

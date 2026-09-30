@@ -1,23 +1,23 @@
 // ScrollPeak — content script entry point.
 //
 // Loaded last (see the js array order in manifest.json), after the vendored
-// vugluscr bundle and after textmap.js / rail.js / magnifier.js have defined
-// their globals. Content scripts in Firefox are not ES modules and cannot
-// dynamically import extension-local files, so the wiring is by load order
-// rather than by import graph — MDN documents that js files run in array
-// order, which is why the order is written out explicitly here.
+// vugluscr bundle and after clone.js / thumb.js / freshness.js / textmap.js /
+// rail.js / magnifier.js have defined their globals. Content scripts in
+// Firefox are not ES modules and cannot dynamically import extension-local
+// files, so the wiring is by load order rather than by import graph -- MDN
+// documents that js files run in array order, which is why the order is
+// written out explicitly here.
 //
 // This file owns the lifecycle: ask the background whether to run, mount, and
 // re-mount when settings change.
 
-// -------------------------------------------------------------- media pages
+// ------------------------------------------------------------------- the map
 //
-// A page of pictures used to be left to the browser's own scrollbar. That is
-// gone: the block renderer draws it, and the map itself chooses between the
-// raster and the blocks (#wantsBlocks() in textmap.js -- a player, or a field
-// of pictures, makes the page block-shaped). The rail always mounts, so a
-// player that appears later cannot take it away, and a lightbox over a text
-// page cannot change the renderer: only the page's own flow counts.
+// The map's base is a clone of the page's own rendering (clone.js): the
+// browser has already laid the page out, so there is no renderer to choose and
+// no page shape to classify. The rail always mounts, so a player that appears
+// later, or a lightbox over the page, cannot take it away. Kate's text raster
+// remains only as the fallback for a page that cannot be cloned.
 
 (async function main() {
   if (window.__scrollpeakLoaded) return;

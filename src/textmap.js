@@ -24,10 +24,9 @@
 // whereas a page only exposes colour per element, so a "line" here is a line
 // box of a single text node rather than a line of arbitrary mixed colour. A
 // paragraph with a link in it therefore becomes two runs, which is more
-// faithful to the page, not less. Two, beyond the port: a short page does not
-// have enough lines to make a raster, so the map switches to semantic blocks
-// when it is zoomed in past the point where characters read as text. See
-// #wantsBlocks() and #collectBlocks(). On a long document nothing changes.
+// faithful to the page, not less. The raster is the fallback: the map's base
+// is a clone of the page itself (see clone.js), and this is what the strip
+// shows while that mounts, or on a page that cannot be cloned.
 
 (function () {
   // All the colour maths lives in colour.js, shared with the options page so
@@ -58,79 +57,10 @@
   // Kate: simpleMode -- m_doc->lines() > 7500 skips highlighting work
   const SIMPLE_MODE_LINE_COUNT = 7500;
 
-  // Beyond the port: when the map is stretched so far that a text line would
-  // occupy more than this many pixels of the groove, the raster stops reading
-  // as text and turns into blobs. Below that much zoom the map draws semantic
-  // blocks instead. See collectBlocks().
-  const BLOCK_MIN_LINE_PX = 4;
-
-  // And when the text is spread wider than this fraction of the viewport, it
-  // is not one column: the raster draws every line from the left margin by
-  // design, so the extremes -- a watch page with its sidebar -- become rows
-  // of unrelated fragments. Measured: YouTube's watch page 0.88, GitHub's
-  // repository page 0.67 (its file list still reads as text, so it stays on
-  // the raster), Wikipedia 0.44, a single-column article 0.03.
-  const BLOCK_SPREAD_FRACTION = 0.75;
-
-  // What becomes a block: the boxes a person navigates by. Links and images
-  // are drawn as themselves; everything else is a text area. Form controls
-  // are here so a settings page, a form or a search panel reads as the
-  // controls it is made of rather than as a handful of stray labels; a video
-  // is here so a player leaves a bar.
-  const BLOCK_SELECTOR = [
-    "p", "li", "dt", "dd", "h1", "h2", "h3", "h4", "h5", "h6",
-    "blockquote", "pre", "figcaption", "caption", "td", "th",
-    "summary", "button", "label", "input", "select", "textarea", "output",
-    "a[href]", "img", "video",
-  ].join(", ");
-
-  // -------------------------------------------------------------- the media
-  //
-  // A page whose content is pictures does not rasterise: the raster spreads a
-  // player's badges and a card's title into unrelated fragments, so those
-  // pages choose the block renderer instead. See #isMediaPage(). The block
-  // renderer does not draw a page's design either; a picture or a player is a
-  // solid bar, because at this size a photo, a chart and a video read the
-  // same, and inventing a picture for each is a second product. What the bar
-  // says is that the page stops being text here, and it can be hovered like
-  // any other part of the strip.
-  //
-  // Thresholds measured across real pages. YouTube's watch page has a 797x598
-  // player; Reddit's front page is 38 large pictures covering 56% of the
-  // document and BBC's front 43 covering 33%. Wikipedia's infobox holds a
-  // 250x141 video thumbnail and GitHub has one large picture at 2%: both keep
-  // the raster. The top-of-page rule below catches eBay and Amazon, whose
-  // long documents dilute any fraction.
-  const MEDIA_VIDEO_MIN_W = 300;
-  const MEDIA_VIDEO_MIN_H = 150;
-  const MEDIA_IMAGE_MIN_W = 200;
-  const MEDIA_IMAGE_MIN_H = 100;
-  const MEDIA_IMAGE_COUNT = 12;
-  const MEDIA_IMAGE_AREA_FRACTION = 0.35;
-  // A picture shelf near the top of the page does not have to cover the whole
-  // document to drown the raster, and a long document dilutes any
-  // whole-document fraction. Measured at 1440x814 over the first two
-  // viewports: eBay 19 pictures, YouTube 7, Amazon's search list 5;
-  // Wikipedia 2, GitHub 0.
-  const MEDIA_TOP_MIN_W = 120;
-  const MEDIA_TOP_MIN_H = 80;
-  const MEDIA_TOP_COUNT = 5;
-  const MEDIA_TOP_VIEWPORTS = 2;
-
   const SKIP_TAGS = new Set([
     "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "TITLE",
     "CANVAS", "IFRAME", "OBJECT", "EMBED", "SVG",
   ]);
-
-  // What the block renderer draws as a control rather than as text.
-  const CONTROL_TAGS = new Set(["INPUT", "SELECT", "TEXTAREA", "BUTTON"]);
-
-  // Firefox's default control colours, measured on an unstyled form (156):
-  // ButtonFace and ButtonBorder. Used when the control itself paints neither
-  // -- a checkbox, radio or slider is drawn by the browser and reports a
-  // transparent background and no border.
-  const CONTROL_FACE = [233, 233, 237];
-  const CONTROL_BORDER = [143, 143, 157];
 
   class TextMap {
     constructor({ width, height }) {
@@ -149,8 +79,6 @@
 
       /** Kate's per-line data. @type {Line[]} */
       this.lines = [];
-      /** Painted graphics, for the preview. @type {Array<object>} */
-      this.boxes = [];
       this.docHeight = 1;
       /**
        * The strip's background, and how much darker than the page it should
@@ -169,14 +97,6 @@
       this.lineIncrement = 1;
       this.background = "#ffffff";
       this.revision = 0;
-      /**
-       * Semantic blocks, collected instead of the text raster when the map is
-       * too zoomed for the raster to read. See collectBlocks().
-       */
-      this.blocks = [];
-      this.blockMode = false;
-      this.blockLeft = 0;
-      this.blockRight = 0;
       // vugluscr's viewport thumb, read for the fade. Deriving the band from
       // the thumb itself rather than recomputing its geometry means the two
       // can never disagree.
@@ -332,14 +252,6 @@
       const { lines, maxY } = this.#gatherLines(root, null);
       this.lines = lines;
 
-      // None, any more. The preview used to be assembled from collected
-      // graphics and text runs, and these were the graphics. It is now a clone
-      // of the page, laid out by the browser, so the collection is dead weight
-      // -- and it was not cheap: a querySelectorAll("*") plus a
-      // getComputedStyle for every element on every rebuild, to produce
-      // something nothing read. The map itself stays text-only, which is
-      // faithful to Kate.
-      this.boxes = [];
 
       // Kate's preview starts at xStart = 0, so what it shows is the line's
       // own indentation, not its position on the page. A page's analogue is
@@ -352,18 +264,6 @@
       this.docHeight = maxY;
       this.background = this.pageBackground();
       this.resolveColours();
-
-      // Which renderer this revision gets is decided by the page: a handful
-      // of line boxes stretched over a tall groove is not text any more, and
-      // neither is a page of pictures. See #wantsBlocks().
-      this.blockMode = this.#wantsBlocks();
-      if (this.blockMode) {
-        this.#collectBlocks(root, scrollX, scrollY, maxY);
-        // A page with nothing block-shaped (rare) reads better as text.
-        this.blockMode = this.blocks.length > 0;
-      } else {
-        this.blocks = [];
-      }
 
       this.revision++;
       return lines;
@@ -397,236 +297,6 @@
         out.set(key, hashText(out.get(key) || 2166136261, lineKey(line)));
       }
       return out;
-    }
-
-    /** Is the map stretched past the point where the raster reads as text? */
-    #wantsBlocks() {
-      // A page whose content is pictures is block-shaped however its text
-      // falls, and a player or a card grid has no single column for the
-      // raster to draw. See #isMediaPage().
-      if (this.#isMediaPage()) return true;
-      // One text line per BLOCK_MIN_LINE_PX of groove, or fatter. The height
-      // guard keeps a tiny map from flipping modes on rounding.
-      if (this.height >= 40 && this.lines.length > 0 &&
-          this.lines.length * BLOCK_MIN_LINE_PX < this.height) {
-        return true;
-      }
-      return this.#spreadFraction() > BLOCK_SPREAD_FRACTION;
-    }
-
-    /**
-     * Is this page one whose content is pictures?
-     *
-     * A player is decisive: on a watch page the video *is* the content.
-     * Otherwise a field of large pictures, either many of them covering a
-     * real share of the document or a shelf of them in the first screen or
-     * two, where they are what the visitor landed on. Only pictures are
-     * measured, and only their rects; a text page with a few images pays
-     * almost nothing.
-     *
-     * Fixed and sticky subtrees are ignored (see #isStuck): a lightbox or a
-     * media viewer is not the page's content, and a page must not change its
-     * renderer -- or worse, lose its rail -- because one opened.
-     */
-    #isMediaPage() {
-      for (const el of document.querySelectorAll("video")) {
-        const r = el.getBoundingClientRect();
-        if (r.width < MEDIA_VIDEO_MIN_W || r.height < MEDIA_VIDEO_MIN_H) continue;
-        const cs = getComputedStyle(el);
-        if (cs.display === "none" || cs.visibility !== "visible") continue;
-        if (this.#isStuck(el)) continue;
-        return true;
-      }
-
-      const vw = document.documentElement.clientWidth || window.innerWidth;
-      const vh = window.innerHeight || 1;
-      const scroller = document.scrollingElement || document.documentElement;
-      const docArea = Math.max(1, scroller.scrollHeight * vw);
-      const topLimit = vh * MEDIA_TOP_VIEWPORTS;
-      let count = 0;
-      let area = 0;
-      let topCount = 0;
-      for (const el of document.querySelectorAll("img, canvas, iframe")) {
-        const r = el.getBoundingClientRect();
-        if (r.width < MEDIA_TOP_MIN_W || r.height < MEDIA_TOP_MIN_H) continue;
-        const cs = getComputedStyle(el);
-        if (cs.display === "none" || cs.visibility === "hidden" ||
-            cs.visibility === "collapse" || this.#isStuck(el)) {
-          continue;
-        }
-        if (r.width >= MEDIA_IMAGE_MIN_W && r.height >= MEDIA_IMAGE_MIN_H) {
-          count++;
-          area += r.width * r.height;
-        }
-        if (r.top < topLimit && r.bottom > 0) {
-          topCount++;
-          if (topCount >= MEDIA_TOP_COUNT) return true;
-        }
-      }
-      return count >= MEDIA_IMAGE_COUNT && area > docArea * MEDIA_IMAGE_AREA_FRACTION;
-    }
-
-    /**
-     * Is this rect's centre outside the document?
-     *
-     * Elements parked just off the top or bottom -- a player's video, a
-     * decorative strip -- convert to document coordinates the strip cannot
-     * show; the collector uses this to decide whether a media element can be
-     * placed at all, or whether an ancestor has to stand in.
-     */
-    #outsideDocument(r, scrollY, maxY) {
-      const centre = r.top + scrollY + r.height / 2;
-      return centre < 0 || centre > maxY;
-    }
-
-    /**
-     * The nearest ancestor a parked media element can be placed by.
-     *
-     * YouTube parks its <video> above the document and shows a poster in a
-     * container; that container's own wrapper (`html5-video-container`)
-     * reports zero height, so this walks up looking for the first ancestor
-     * that is really on the page and plausibly the same player -- a real
-     * size, inside the document, not stuck, and not more than a few players
-     * big (which keeps the page body or the whole column out).
-     */
-    #visibleContainer(el, own, scrollY, maxY) {
-      const area = own.width * own.height;
-      let depth = 0;
-      for (let box = el.parentElement; box && depth < 6;
-           box = box.parentElement, depth++) {
-        if (box === document.body || box === document.documentElement) break;
-        const br = box.getBoundingClientRect();
-        if (br.width < 1 || br.height < 1) continue;
-        if (area >= 1 && br.width * br.height > area * 4) continue;
-        if (this.#outsideDocument(br, scrollY, maxY)) continue;
-        if (this.#isStuck(box)) continue;
-        return br;
-      }
-      return null;
-    }
-
-    /**
-     * How wide is the text, as a fraction of the viewport?
-     *
-     * The 10th to 90th percentile of line x, so a single stray line does not
-     * decide it. Sampled when the document is very long, because this runs on
-     * every collect and the sort is the only cost.
-     */
-    #spreadFraction() {
-      const n = this.lines.length;
-      if (n < 12) return 0;
-      const step = n > 4000 ? 3 : 1;
-      const xs = [];
-      for (let i = 0; i < n; i += step) xs.push(this.lines[i].x);
-      xs.sort((a, b) => a - b);
-      const low = xs[Math.floor(xs.length * 0.1)];
-      const high = xs[Math.min(xs.length - 1, Math.floor(xs.length * 0.9))];
-      const width = document.documentElement.clientWidth || window.innerWidth;
-      return (high - low) / Math.max(1, width);
-    }
-
-    /**
-     * The elements worth drawing as blocks, in document coordinates.
-     *
-     * This is the one pass that reads the page as elements rather than text,
-     * and it only runs when the map is not a raster: on a long single-column
-     * document the raster looks better and this sweep is skipped entirely, so
-     * the cost of a per-element getBoundingClientRect never lands on the
-     * pages that do not need it.
-     *
-     * The vocabulary is deliberately small -- document boxes, links, pictures
-     * and controls. A page's design is its own; the map only needs to know
-     * where its text is, and a picture or a player is a bar (see
-     * #paintBlocks). That keeps an app-shaped page readable without inventing
-     * a representation for every layout on the web.
-     *
-     * Links use their line fragments rather than one bounding box, so a link
-     * that wraps is two blue bars instead of a rectangle covering the text
-     * between them. Images and videos are atomic. Form controls keep their
-     * own field or face colour and their border, so a checkbox or a slider
-     * reads as a control rather than as another bar of text.
-     */
-    #collectBlocks(root, scrollX, scrollY, maxY) {
-      const blocks = [];
-      for (const el of root.querySelectorAll(BLOCK_SELECTOR)) {
-        if (el.closest(".vugluscr, .scrollpeak-magnifier, .scrollpeak-map")) {
-          continue;
-        }
-        const cs = getComputedStyle(el);
-        if (
-          cs.display === "none" ||
-          cs.visibility === "hidden" || cs.visibility === "collapse" ||
-          this.#isStuck(el)
-        ) {
-          continue;
-        }
-
-        const tag = el.tagName;
-        const kind = (tag === "IMG" || tag === "VIDEO") ? "image"
-          : tag === "A" ? "link"
-          : CONTROL_TAGS.has(tag) ? "control" : "text";
-
-        let own = el.getBoundingClientRect();
-
-        // A player can park its <video> outside the page: YouTube keeps it
-        // absolutely above the document and paints a poster in a container.
-        // The video's own rect then converts to a document position above the
-        // strip, where the bar is clipped away -- a player with no bar at all.
-        // The nearest ancestor that is really on the page stands in.
-        if (kind === "image" &&
-            (own.width * own.height < 1 ||
-             this.#outsideDocument(own, scrollY, maxY))) {
-          own = this.#visibleContainer(el, own, scrollY, maxY) || own;
-        }
-
-        const rects = kind === "link"
-          ? Array.from(el.getClientRects())
-          : [own];
-
-        // A control's own colours, as the browser paints it: the field or
-        // button face, and the border. A natively drawn widget -- checkbox,
-        // radio, slider -- reports neither, because the browser paints those
-        // itself, so those fall back to Firefox's defaults in #paintBlocks().
-        // Strings, not parsed triples: the painter parses them again, the
-        // same way it does for a link's colour.
-        const face = kind === "control" && opaqueRgb(cs.backgroundColor)
-          ? cs.backgroundColor
-          : null;
-        const border = kind === "control" && cs.borderTopStyle !== "none" &&
-          opaqueRgb(cs.borderTopColor)
-          ? cs.borderTopColor
-          : null;
-
-        for (const r of rects) {
-          if (r.width < 1 || r.height < 1) continue;
-          const y = r.top + scrollY;
-          if (y + r.height < 0 || y > maxY) continue;
-          blocks.push({
-            x: r.left + scrollX,
-            y,
-            w: r.width,
-            h: r.height,
-            kind,
-            colour: kind === "link" ? cs.color : face,
-            border,
-          });
-        }
-      }
-
-      // Text first, then controls over it, then links, then pictures and
-      // players as bars on top of everything.
-      const order = { text: 0, control: 1, link: 2, image: 3 };
-      blocks.sort((a, b) => order[a.kind] - order[b.kind]);
-
-      this.blocks = blocks;
-      let left = Infinity;
-      let right = -Infinity;
-      for (const b of blocks) {
-        if (b.x < left) left = b.x;
-        if (b.x + b.w > right) right = b.x + b.w;
-      }
-      this.blockLeft = blocks.length ? left : 0;
-      this.blockRight = blocks.length ? right : 1;
     }
 
     /**
@@ -789,7 +459,6 @@
       };
     }
 
-    /** Left edge of the main content column, robustly. */
     contentLeftOf() {
       return this.contentLeft;
     }
@@ -1024,31 +693,11 @@
         this.canvas.dataset.palette = palette;
       }
 
-      // Which renderer drew this map, and for blocks, what it had to work
-      // with. Published for the block test and the site probe.
-      let modeKey = this.renderMode === "clone" ? "clone" : "text";
-      let counts = null;
-      if (this.renderMode !== "clone" && this.blockMode) {
-        counts = { text: 0, control: 0, link: 0, image: 0 };
-        for (const b of this.blocks) counts[b.kind]++;
-        modeKey = `blocks:${JSON.stringify(counts)}:` +
-          `${Math.round(this.blockLeft)}:${Math.round(this.blockRight)}`;
-      }
+      // Which surface drew this map, published for the site probe.
+      const modeKey = this.renderMode === "clone" ? "clone" : "text";
       if (modeKey !== this._modeKey) {
         this._modeKey = modeKey;
-        this.canvas.dataset.mode = this.renderMode === "clone"
-          ? "clone"
-          : (this.blockMode ? "blocks" : "text");
-        if (counts) {
-          this.canvas.dataset.blocks = JSON.stringify(counts);
-          this.canvas.dataset.blockSpan = JSON.stringify({
-            left: Math.round(this.blockLeft),
-            right: Math.round(this.blockRight),
-          });
-        } else {
-          delete this.canvas.dataset.blocks;
-          delete this.canvas.dataset.blockSpan;
-        }
+        this.canvas.dataset.mode = modeKey;
       }
 
       const rectKey = `${Math.round(docTop)}:${Math.round(docHeight)}`;
@@ -1058,8 +707,8 @@
           top: Math.round(docTop), height: Math.round(docHeight),
         });
       }
-      // The document height the blocks were collected against, published for
-      // the tests: a probe comparing live page rects with drawn ones needs to
+      // The document height the map was collected against, published for the
+      // tests: a probe comparing live page rects with drawn ones needs to
       // know whether the map is stale.
       const dhKey = String(Math.round(this.docHeight));
       if (dhKey !== this._dhKey) {
@@ -1092,19 +741,14 @@
         ctx.fillStyle = this.mapBackground;
         ctx.fillRect(0, 0, this.width, grooveHeight);
 
-        // Stretch the pixmap over the whole groove, or, when the map is too
-        // zoomed for the raster to read as text, draw the semantic blocks.
-        if (this.blockMode) {
-          this.#paintBlocks(docTop, docHeight);
-        } else {
-          const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
-          if (contentW > 0) {
-            ctx.drawImage(
-              this.pixmap,
-              S_PIXEL_MARGIN, 0, contentW, this.pixmapLineCount,
-              DOC_X_MARGIN, docTop, this.width - DOC_X_MARGIN, docHeight,
-            );
-          }
+        // Stretch the pixmap over the whole groove.
+        const contentW = this.pixmapLineWidth - S_PIXEL_MARGIN;
+        if (contentW > 0) {
+          ctx.drawImage(
+            this.pixmap,
+            S_PIXEL_MARGIN, 0, contentW, this.pixmapLineCount,
+            DOC_X_MARGIN, docTop, this.width - DOC_X_MARGIN, docHeight,
+          );
         }
       }
 
@@ -1124,67 +768,6 @@
       // Kate also draws a delimiter at the bottom of the map, which only has
       // somewhere to go because his map can be shorter than the groove. Ours
       // always reaches the bottom, so there is nothing to delimit.
-    }
-
-    /**
-     * The block renderer: text areas as contrast fills, links in their own
-     * colour, pictures and players as solid bars, controls as boxes in their
-     * own field, face and border colours.
-     *
-     * Like the raster, this maps document coordinates onto the drawn rect, so
-     * the viewport band and the preview's document offsets still line up with
-     * what is drawn. The horizontal span is the blocks' own extent rather
-     * than the viewport's, so a page with a sidebar or a narrow column still
-     * uses the whole strip instead of a sliver of it.
-     */
-    #paintBlocks(docTop, docHeight) {
-      const ctx = this.ctx;
-      const span = Math.max(1, this.blockRight - this.blockLeft);
-      const stripW = Math.max(1, this.width - 2 * DOC_X_MARGIN);
-      const ink = this.palette.ink;
-      const bgRgb = this._mapBackgroundRgb;
-
-      for (const b of this.blocks) {
-        const x = DOC_X_MARGIN + ((b.x - this.blockLeft) / span) * stripW;
-        const w = Math.max(1, (b.w / span) * stripW);
-        const y = docTop + (b.y / this.docHeight) * docHeight;
-        const h = Math.max(1, (b.h / this.docHeight) * docHeight);
-
-        if (b.kind === "link") {
-          // The page's own link colour, pushed to contrast with the strip the
-          // same way the text raster pushes its marks: a link stays
-          // link-coloured and readable on any strip.
-          const rgb = ensureContrast(
-            parseRgb(b.colour) || [59, 110, 165], bgRgb, this.markContrast);
-          ctx.fillStyle = `rgb(${rgb.join(",")})`;
-          ctx.fillRect(x, y, w, h);
-        } else if (b.kind === "control") {
-          // A control is the browser's own field or button face, outlined
-          // with its own border -- or Firefox's defaults when the browser
-          // paints the widget itself and reports neither. Both colours are
-          // pushed to contrast: the face against the strip, the border
-          // against the face, so a control stays a visible box on any strip
-          // instead of merging into the text around it.
-          const face = ensureContrast(
-            parseRgb(b.colour) || CONTROL_FACE, bgRgb, this.markContrast);
-          const border = ensureContrast(
-            parseRgb(b.border) || CONTROL_BORDER, face, this.markContrast);
-          ctx.fillStyle = `rgb(${face.join(",")})`;
-          ctx.fillRect(x, y, w, h);
-          ctx.strokeStyle = `rgb(${border.join(",")})`;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, w - 1), Math.max(1, h - 1));
-        } else {
-          // A text area -- and a picture or a player, which is drawn as a
-          // solid bar rather than as its contents. At this size a photo, a
-          // chart and a video differ only in ways a 70px strip cannot show,
-          // and drawing an approximation of each would be a second product.
-          // The bar says the page stops being text here; it is part of the
-          // rail and hovers like everything else on the strip.
-          ctx.fillStyle = ink;
-          ctx.fillRect(x, y, w, h);
-        }
-      }
     }
 
     /**
@@ -1361,24 +944,6 @@
     const xs = lines.map((l) => l.x).sort((a, b) => a - b);
     if (!xs.length) return 0;
     return xs[Math.floor(xs.length * 0.05)] || 0;
-  }
-
-  /**
-   * parseRgb, but null when the colour is fully transparent.
-   *
-   * A control with no background of its own computes to `rgba(0, 0, 0, 0)`,
-   * and parseRgb ignores alpha, so without this a checkbox would be painted
-   * black. Semi-transparent counts as painted, the same reading as
-   * pageBackground().
-   */
-  function opaqueRgb(value) {
-    const rgb = parseRgb(value);
-    if (!rgb) return null;
-    const alpha = /rgba?\([^)]*?,\s*([\d.]+)\s*\)$/.exec(value || "");
-    // The regex matches the last component of rgb() too, where it is the
-    // blue channel; only an exact 0 matters, and blue 0 is not transparency.
-    if (alpha && Number(alpha[1]) === 0) return null;
-    return rgb;
   }
 
   function renderedText(slice) {

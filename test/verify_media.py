@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Check that media-heavy pages get the block renderer, and keep the rail.
+Check that media-heavy pages keep the rail, under the clone map.
 
-Both of the map's renderers used to give up on a page of pictures: ScrollPeak
-never mounted and the browser's own scrollbar stayed. That is gone. A player,
-or a field of pictures, now selects the block renderer (#isMediaPage() in
-textmap.js), and the rail mounts everywhere, so a player that arrives late
-cannot hand the page back to the browser. This pins down which fixtures are
-read as media, that they keep the rail and its block map, and that a fixed
-overlay -- a lightbox, Wikipedia's media viewer -- is not mistaken for one:
-only the page's own flow counts.
+The block renderer existed because the text raster could not read a page of
+pictures. The clone does: it is the page's own rendering, so a player, a
+gallery, a parked <video> and a thumbnail all map as themselves. What still
+needs pinning is the old rule this replaced -- the rail must not disappear
+because a player arrived late, and a fixed overlay (a lightbox) must not change
+or remove it.
 
     python3 test/verify_media.py [extension-dir]
 """
@@ -19,77 +17,36 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness import SRC, fixture_server, launch_firefox, stop_firefox, variant  # noqa: E402
+from harness import SRC, fixture_server, launch_firefox, stop_firefox  # noqa: E402
 
-MEDIA = "/media.html"        # a 480x270 player and four pictures: blocks
-GALLERY = "/gallery.html"    # sixteen large pictures, no video: blocks
+MEDIA = "/media.html"           # a player and four pictures
+GALLERY = "/gallery.html"       # sixteen large pictures, no video
 PARKED = "/parked-player.html"  # the player's video sits above the page
-SMALL = "/small-media.html"  # a 250x141 video: a thumbnail, not a player
-LATE = "/late-media.html"    # a long article that grows a player later
-LIGHTBOX = "/lightbox.html"  # a long article that opens a fixed media overlay
-ARTICLE = "/article.html"    # text, expected to keep its block map
-LONG = "/long.html"          # text, expected to keep its raster
+SMALL = "/small-media.html"     # a thumbnail-sized video
+LATE = "/late-media.html"       # a long article that grows a player later
+LIGHTBOX = "/lightbox.html"     # a long article that opens a fixed overlay
 
 STATE = r"""
 const map = document.querySelector(".scrollpeak-map");
 const rail = document.querySelector(".vugluscr .scrollbar");
-const root = document.documentElement;
-const out = {
+const tf = document.querySelector(".scrollpeak-thumb__frame");
+const tw = tf && tf.contentDocument
+  ? tf.contentDocument.querySelector(".scrollpeak-thumb__page") : null;
+return {
   rail: !!rail,
   map: !!map,
-  active: root.classList.contains("vugluscr_active"),
+  thumb: !!document.querySelector(".scrollpeak-thumb"),
+  thumbNodes: tw ? tw.querySelectorAll("*").length : 0,
   mode: map ? map.dataset.mode : null,
-  blocks: null,
-  padRight: getComputedStyle(document.body).paddingRight,
-  scrollbarWidth: getComputedStyle(root).scrollbarWidth,
-  docHeight: document.scrollingElement.scrollHeight,
-  viewport: window.innerHeight,
-  railRect: null,
-  bar: null, strip: null, ink: null, barScreenY: null,
-  previewOpen: null,
+  active: document.documentElement.classList.contains("vugluscr_active"),
+  scrollbarWidth: getComputedStyle(document.documentElement).scrollbarWidth,
+  previewOpen: (() => {
+    const pop = document.querySelector(".scrollpeak-magnifier");
+    return pop ? pop.classList.contains("is-open") : null;
+  })(),
+  sperr: document.documentElement.dataset.sperr || null,
 };
-try {
-  out.blocks = map && map.dataset.blocks ? JSON.parse(map.dataset.blocks) : null;
-} catch (e) { out.blocksErr = String(e); }
-if (rail) {
-  const rr = rail.getBoundingClientRect();
-  out.railRect = [Math.round(rr.left), Math.round(rr.top),
-                  Math.round(rr.width), Math.round(rr.height)];
-}
-const cs = getComputedStyle(root);
-out.strip = cs.getPropertyValue("--sp-strip").trim();
-out.ink = cs.getPropertyValue("--sp-ink").trim();
-// The solid bar a picture or player is drawn as: project the element's
-// centre the same way #paintBlocks() does and read the map pixel there. A
-// fixture can point at the visible container with data-bar-check when the
-// media element itself is parked outside the document (YouTube's player).
-const barEl = document.querySelector("[data-bar-check]") ||
-              document.querySelector("video[data-id]");
-if (map && barEl && map.dataset.blockSpan && map.dataset.docRect &&
-    map.dataset.docHeight) {
-  const span = JSON.parse(map.dataset.blockSpan);
-  const rect = JSON.parse(map.dataset.docRect);
-  const docH = Number(map.dataset.docHeight);
-  const r = barEl.getBoundingClientRect();
-  const docX = r.left + scrollX + r.width / 2;
-  const docY = r.top + scrollY + r.height / 2;
-  const x = 1 + ((docX - span.left) /
-    Math.max(1, span.right - span.left)) * (map.width - 2);
-  const y = rect.top + (docY / docH) * rect.height;
-  const px = Math.max(0, Math.min(map.width - 1, Math.round(x)));
-  const py = Math.max(0, Math.min(map.height - 1, Math.round(y)));
-  const d = map.getContext("2d").getImageData(px, py, 1, 1).data;
-  out.bar = [d[0], d[1], d[2], d[3]];
-  out.barScreenY = Math.round(y);
-}
-const pop = document.querySelector(".scrollpeak-magnifier");
-out.previewOpen = pop ? pop.classList.contains("is-open") : null;
-return out;
 """
-
-
-def rgb(value):
-    return [int(v) for v in value[4:-1].split(",")]
 
 
 def main():
@@ -100,132 +57,76 @@ def main():
         if not cond:
             failures.append(name)
 
-    ext = sys.argv[1] if len(sys.argv) > 1 else variant({"mapMode": "raster"})
+    ext = sys.argv[1] if len(sys.argv) > 1 else SRC
 
     with fixture_server() as server:
         proc, m = launch_firefox(ext)
         try:
             def read():
-                r = m.cmd("WebDriver:ExecuteScript",
-                          {"script": STATE, "args": []})
+                r = m.cmd("WebDriver:ExecuteScript", {"script": STATE, "args": []})
                 return r.get("value", r)
 
-            def page(path):
+            def page(path, settle=3):
                 m.cmd("WebDriver:Navigate", {"url": server.fixtures + path})
-                time.sleep(3)
+                time.sleep(settle)
                 return read()
 
-            print("a page with a player is mapped as blocks")
-            d = page(MEDIA)
-            check("the rail is mounted", d["rail"] and d["map"],
-                  f"rail={d['rail']} map={d['map']}")
-            check("the map is the block renderer", d["mode"] == "blocks",
-                  str(d["mode"]))
-            check("the player and the pictures are blocks",
-                  d["blocks"] and d["blocks"]["image"] >= 5,
-                  json.dumps(d["blocks"]))
-            ink = rgb(d["ink"]) if d["ink"] else None
-            check("the player is a solid bar in the strip's ink",
-                  d["bar"] and ink and
-                  all(abs(d["bar"][i] - ink[i]) <= 8 for i in range(3)),
-                  f"bar={d['bar']} ink={ink}")
-            check("the native scrollbar stays suppressed",
-                  d["active"] and d["scrollbarWidth"] == "none",
-                  f"active={d['active']} scrollbar={d['scrollbarWidth']}")
+            def hover(frac=0.4):
+                m.cmd("WebDriver:ExecuteAsyncScript", {"script": r"""
+                    const done = arguments[arguments.length - 1];
+                    const frac = arguments[0];
+                    const strip = document.querySelector(".vugluscr .minimap");
+                    if (!strip) { done({err: "no rail"}); return; }
+                    const r = strip.getBoundingClientRect();
+                    strip.dispatchEvent(new PointerEvent("pointermove", {
+                      clientX: r.left + r.width / 2, clientY: r.top + r.height * frac,
+                      bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+                    setTimeout(done, 900);
+                """, "args": [frac], "scriptTimeout": 20000})
+                return read()
 
-            # A bar is not a dead region: the whole strip stays hoverable, so
-            # pointing at the player's bar must open the preview there.
-            x = d["railRect"][0] + d["railRect"][2] // 2
-            y = d["railRect"][1] + (d["barScreenY"]
-                                    if d["barScreenY"] is not None
-                                    else d["railRect"][3] // 2)
-            m.cmd("WebDriver:PerformActions", {"actions": [{
-                "type": "pointer", "id": "mouse",
-                "parameters": {"pointerType": "mouse"},
-                "actions": [{"type": "pointerMove", "duration": 16,
-                             "origin": "viewport", "x": x, "y": y}],
-            }]})
-            time.sleep(0.9)
-            d2 = read()
-            check("hovering the bar opens the preview",
-                  d2["previewOpen"] is True, f"previewOpen={d2['previewOpen']}")
+            print("a page with a player is mapped, and the rail stays")
+            for path in (MEDIA, GALLERY, PARKED, SMALL):
+                d = page(path)
+                check(f"{path} keeps the rail", d["rail"] and d["map"], str(d))
+                check(f"{path} maps with the clone",
+                      d["mode"] == "clone" and d["thumbNodes"] > 3,
+                      f"mode={d['mode']} nodes={d['thumbNodes']}")
+                check(f"{path} suppresses the native scrollbar",
+                      d["active"] and d["scrollbarWidth"] == "none",
+                      f"active={d['active']} scrollbar={d['scrollbarWidth']}")
+            d = hover()
+            check("hovering the map opens the preview",
+                  d["previewOpen"] is True, f"previewOpen={d['previewOpen']}")
 
-            print("\na player parked above the page still leaves a bar")
-            d = page(PARKED)
-            check("the rail is mounted", d["rail"] and d["map"],
-                  f"rail={d['rail']} map={d['map']}")
-            check("the map is the block renderer", d["mode"] == "blocks",
-                  str(d["mode"]))
-            check("the parked player is a block",
-                  d["blocks"] and d["blocks"]["image"] >= 1,
-                  json.dumps(d["blocks"]))
-            ink = rgb(d["ink"]) if d["ink"] else None
-            check("the bar is drawn where the container is",
-                  d["bar"] and ink and
-                  all(abs(d["bar"][i] - ink[i]) <= 8 for i in range(3)),
-                  f"bar={d['bar']} ink={ink}")
-
-            print("\na wall of pictures is mapped as blocks")
-            d = page(GALLERY)
-            check("the rail is mounted", d["rail"] and d["map"])
-            check("the map is the block renderer", d["mode"] == "blocks",
-                  str(d["mode"]))
-            check("every picture is a block",
-                  d["blocks"] and d["blocks"]["image"] >= 12,
-                  json.dumps(d["blocks"]))
-            check("the native scrollbar stays suppressed",
-                  d["active"] and d["scrollbarWidth"] == "none",
-                  f"active={d['active']} scrollbar={d['scrollbarWidth']}")
-
-            print("\na thumbnail-sized video is not a player")
-            d = page(SMALL)
-            check("the rail is mounted", d["rail"] and d["map"],
-                  f"rail={d['rail']} map={d['map']}")
-            check("the map has a renderer", d["mode"] in ("text", "blocks"),
-                  str(d["mode"]))
-            check("the native scrollbar is suppressed by the rail",
-                  d["active"] and d["scrollbarWidth"] == "none",
-                  f"active={d['active']} scrollbar={d['scrollbarWidth']}")
-
-            print("\ntext pages keep their maps")
-            d = page(ARTICLE)
-            check("the short article is still mapped", d["rail"] and d["map"])
-            d = page(LONG)
-            check("the long article is still mapped", d["rail"] and d["map"])
-            check("and it is still Kate's raster", d["mode"] == "text",
-                  str(d["mode"]))
-
-            print("\na player that arrives later switches renderer, not scrollbar")
+            print("\na player that arrives later does not take the rail away")
             d = page(LATE)
-            check("the long article starts on the raster", d["mode"] == "text",
+            check("the article starts on the clone", d["mode"] == "clone",
                   str(d["mode"]))
             m.cmd("WebDriver:ExecuteScript",
                   {"script": "window.__addPlayer(); return 1;", "args": []})
-            time.sleep(1.6)
+            time.sleep(2.0)
             d = read()
-            check("the rail is still mounted", d["rail"] and d["map"],
-                  f"rail={d['rail']} map={d['map']}")
-            check("the map switched to blocks", d["mode"] == "blocks",
-                  str(d["mode"]))
+            check("the rail is still mounted", d["rail"] and d["map"], str(d))
+            check("it is still the clone", d["mode"] == "clone"
+                  and d["thumbNodes"] > 3,
+                  f"mode={d['mode']} nodes={d['thumbNodes']}")
             check("the native scrollbar is still suppressed",
                   d["active"] and d["scrollbarWidth"] == "none",
                   f"active={d['active']} scrollbar={d['scrollbarWidth']}")
 
-            print("\na lightbox does not change the renderer")
+            print("\na lightbox does not disturb the rail")
             d = page(LIGHTBOX)
-            check("the article starts on the raster", d["mode"] == "text",
+            check("the article starts on the clone", d["mode"] == "clone",
                   str(d["mode"]))
             m.cmd("WebDriver:ExecuteScript",
                   {"script": "window.__openLightbox(); return 1;", "args": []})
-            time.sleep(1.6)
+            time.sleep(2.0)
             d = read()
-            check("the rail is still mounted", d["rail"] and d["map"],
-                  f"rail={d['rail']} map={d['map']}")
-            check("the renderer is unchanged", d["mode"] == "text",
-                  str(d["mode"]))
-            check("the native scrollbar is still suppressed",
-                  d["active"] and d["scrollbarWidth"] == "none",
-                  f"active={d['active']} scrollbar={d['scrollbarWidth']}")
+            check("the rail is still mounted", d["rail"] and d["map"], str(d))
+            check("and the map is unchanged", d["mode"] == "clone"
+                  and d["thumbNodes"] > 3,
+                  f"mode={d['mode']} nodes={d['thumbNodes']}")
         finally:
             stop_firefox(proc)
 
@@ -233,7 +134,7 @@ def main():
     if failures:
         print("FAILED: " + ", ".join(failures))
         return 1
-    print("media pages get blocks; the rail stays; lightboxes change nothing")
+    print("media pages keep the clone map; late players and lightboxes change nothing")
     return 0
 
 
