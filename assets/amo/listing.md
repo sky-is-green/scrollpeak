@@ -81,21 +81,49 @@ minimap, scrollbar, scroll bar, overview, navigation, long documents
 
 ## Notes for reviewers
 
-- The manifest declares
-  `browser_specific_settings.gecko.data_collection_permissions` as
-  `{"required": ["none"]}`; the extension makes no network requests and
-  collects nothing.
-- The map and the hover preview are a clone of the page's own `<body>` in a
-  sandboxed same-origin iframe (`src/clone.js`), scaled with CSS transforms.
-  Scripts do not run in the frame, and animations and media are paused, so it
-  is a picture of the page rather than a second live copy. The rail shows it
-  fitted to the strip; hovering shows the same clone at 0.75.
-- The text raster (`src/textmap.js`) is a port of `KateScrollBar` in Kate's
-  `ktexteditor` (upstream: https://invent.kde.org/frameworks/ktexteditor) and
-  remains the fallback when a page cannot be cloned. The Kate constants it
-  reproduces are commented at their point of use in `src/textmap.js`.
-- `src/vendor/vugluscr.standalone.js` is an unminified rollup bundle of
-  vugluscr 2.0.0 (MIT); the surrounding files are the extension. The vendor's
-  NOTICE and LICENSE are in `src/vendor/`.
-- There is no build step. The zip is `src/` as-is; `python3 scripts/build.py`
-  only verifies the manifest and packs it.
+The submitted ZIP is the extension's unminified source with `manifest.json` at
+its root; nothing is minified, concatenated or generated. The only vendored
+file is `src/vendor/vugluscr.standalone.js`, an unminified rollup bundle of
+vugluscr 2.0.0 (MIT), shipped with its LICENSE and NOTICE unchanged.
+
+**Exact reproduction (no build step).** To create a byte-identical copy of the
+submitted package:
+
+    git clone https://github.com/sky-is-green/scrollpeak
+    cd scrollpeak
+    git checkout 8055b83
+    python3 scripts/build.py
+
+That writes `dist/scrollpeak-0.1.0.zip`. The script needs only Python 3 (no
+dependencies); it verifies the manifest and packs `src/`, and the zip is
+deterministic, so its sha256 matches the submitted file:
+`e39834cdc0b85dc66b74a2888723654f302eb8a20c9577908c90555421293a30`. No
+separate source package is required.
+
+**Data collection.** The manifest declares
+`browser_specific_settings.gecko.data_collection_permissions` as
+`{"required": ["none"]}`. The extension makes no network requests, has no
+analytics or telemetry, and transmits nothing. It reads the page it runs on
+only to draw the map, and stores only the user's own settings.
+
+**How the map is made.** The map and the hover preview are a snapshot of the
+page's own `<body>`, mounted in a sandboxed same-origin iframe
+(`src/clone.js`, `src/thumb.js`) and scaled with CSS transforms
+(`src/magnifier.js`). Scripts do not run in the frame, and animations and
+media are paused, so it is a picture of the page rather than a second live
+copy. On a page that cannot be cloned, the fallback is a text raster
+(`src/textmap.js`), a port of `KateScrollBar` from KDE's KTextEditor
+(https://invent.kde.org/frameworks/ktexteditor).
+
+**Permissions.**
+
+- **Access your data for all websites** — the extension must read whatever
+  page it runs on to draw the map; that content is read locally and used for
+  nothing else.
+- **Storage** — saves the user's settings (width, colours, per-site
+  exclusions).
+- **Theme** — reads the browser's colours so the default strip colour follows
+  the user's theme.
+
+Requires Firefox 146 or later: MV3 host permissions (Firefox 127+) and the
+`@scope` CSS used by the vendored scrollbar (Firefox 146).
