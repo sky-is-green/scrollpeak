@@ -1,4 +1,6 @@
-# ScrollPeak
+<img width="1600" height="420" alt="12-title-logo-transparent" src="https://github.com/user-attachments/assets/5ab8b97c-ff6d-4517-bc3b-f8585e135d67" />
+
+
 
 **A scrollbar minimap for Firefox.**
 
