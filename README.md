@@ -4,6 +4,7 @@
 
 [click-to-jump.webm](https://github.com/user-attachments/assets/26000c5c-14bc-471e-a54b-03c6a09f66f1)
 
+---
 
 Hover the scrollbar to see the whole page as a small map, move across it to
 read a preview of that part of the page, and click to jump there. The map is
@@ -14,6 +15,8 @@ A port of the scrollbar minimap from [Kate](https://kate-editor.org), the KDE
 text editor. How the original works is best explained by the original: the
 minimap lives in `KateScrollBar` in
 [KTextEditor](https://invent.kde.org/frameworks/ktexteditor).
+
+---
 
 ## Running it
 
