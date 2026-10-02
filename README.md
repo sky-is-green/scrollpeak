@@ -14,28 +14,16 @@ minimap lives in `KateScrollBar` in
 
 ## Demo
 
-Four short clips, recorded on
-[Wikipedia's article about Firefox](https://en.wikipedia.org/wiki/Firefox).
-The rail is the strip on the right; the panel that follows the cursor is the
-preview.
+Four short clips of ScrollPeak in use are in [`assets/demo/`](assets/demo/):
+hover preview, click to jump, drag to scroll and peek. They are silent webm
+recorded at 1280×800 on
+[Wikipedia's article about Firefox](https://en.wikipedia.org/wiki/Firefox):
+the rail is the strip on the right, and the panel that follows the cursor is
+the preview.
 
-**Hover to preview.** Move down the rail and the preview follows, showing the
-page under the cursor before you scroll there.
-
-<video src="assets/demo/hover-preview.webm" width="1280" autoplay loop muted playsinline controls></video>
-
-**Click to jump.** The preview shows where you are aiming; a click takes you
-there.
-
-<video src="assets/demo/click-to-jump.webm" width="1280" autoplay loop muted playsinline controls></video>
-
-**Drag to scroll.** Press and drag to travel continuously.
-
-<video src="assets/demo/drag-to-scroll.webm" width="1280" autoplay loop muted playsinline controls></video>
-
-**Peek.** With Peek on, the rail stays out of the way until you approach it.
-
-<video src="assets/demo/peek.webm" width="1280" autoplay loop muted playsinline controls></video>
+<!-- GitHub strips <video> tags that point into the repository, so the clips
+     cannot play inline until they are uploaded to GitHub's attachment host
+     (drag-and-drop in the issue editor) and referenced from there. -->
 
 ## Running it
 
