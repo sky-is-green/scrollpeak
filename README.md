@@ -14,9 +14,28 @@ minimap lives in `KateScrollBar` in
 
 ## Demo
 
-<!-- Short webms of ScrollPeak in use go here. One clip per feature reads
-     best: hover preview, click-to-jump, peek. -->
-_Demo clips coming soon._
+Four short clips, recorded on
+[Wikipedia's article about Firefox](https://en.wikipedia.org/wiki/Firefox).
+The rail is the strip on the right; the panel that follows the cursor is the
+preview.
+
+**Hover to preview.** Move down the rail and the preview follows, showing the
+page under the cursor before you scroll there.
+
+<video src="assets/demo/hover-preview.webm" width="1280" autoplay loop muted playsinline controls></video>
+
+**Click to jump.** The preview shows where you are aiming; a click takes you
+there.
+
+<video src="assets/demo/click-to-jump.webm" width="1280" autoplay loop muted playsinline controls></video>
+
+**Drag to scroll.** Press and drag to travel continuously.
+
+<video src="assets/demo/drag-to-scroll.webm" width="1280" autoplay loop muted playsinline controls></video>
+
+**Peek.** With Peek on, the rail stays out of the way until you approach it.
+
+<video src="assets/demo/peek.webm" width="1280" autoplay loop muted playsinline controls></video>
 
 ## Running it
 
